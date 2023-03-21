@@ -232,13 +232,24 @@ namespace Bn3monkey
             // @param name 변경할 상위 프리셋의 이름
             // @return 성공 여부
             bool BN3MONKEYLIBRARY_API setPresetName(const int id, const char* name);
+
             // @brief 프리셋의 이름을 가져온다.
             // @param id 상위 프리셋의 아이디
             // @param value 상위 프리셋의 이름
             // @param length 상위 프리셋 이름을 받아오기 위한 배열의 길이
             // @return 성공 여부.
             bool BN3MONKEYLIBRARY_API getPresetName(const int id, char* value, size_t length);
+
+            // @brief 프리셋의 임의 순서를 설정한다.
+            // @param id 상위 프리셋의 아이디
+            // @param value 상위 프리셋의 임의 순서
+            // @return 성공 여부.
             bool BN3MONKEYLIBRARY_API setPresetOrder(const int id, const double value);
+
+            // @brief 프리셋의 임의 순서를 가져온다.
+            // @param id 상위 프리셋의 아이디
+            // @param value 상위 프리셋의 임의 순서
+            // @return 성공 여부.
             bool BN3MONKEYLIBRARY_API getPresetOrder(const int id, double* value);
 
             bool BN3MONKEYLIBRARY_API getCurrentPreset(const int surpreset_id, int* preset_id);
