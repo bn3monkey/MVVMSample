@@ -1,85 +1,13 @@
-#include <functional>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <atomic>
 
-
-
-class ThreadPool
-{
-public:
-    static ThreadPool& getInstance() {
-        return _instance;
-    }
-
-    ThreadPool initialize()
-    {
-        is_running = true;
-        _routine = std::thread([&](){
-            routine();
-        });
-    }
-    ThreadPool release() {
-        is_running = false;
-        _routine.join();
-    }
-
-
-    bool isInThreadPool() {
-        return _routine_id == std::this_thread::get_id();
-    }
-
-    template<class F, class ...Args>
-    void run(F&& f, Args&&... args)
-    {
-        auto binded_function = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
-        {
-            std::unique_lock<std::mutex> lock(_queue_mutex);
-            _tasks.emplace(
-                [&binded_function](){
-                    bind_function();
-                }
-            )
-        }
-        _queue_cv.notify_one();
-    } 
-
-private:
-    static ThreadPool _instance;
-    std::queue<std::function<void()>> _tasks;
-    std::mutex _queue_mutex;
-    std::condition_variable _queue_cv;
-    std::thread::id _routine_id;
-    std::thread _routine;
-    std::atomic<bool> is_running;
-     
-    
-    void routine()
-    {
-        _routine_id = std::this_thread::get_id();
-        while (is_running)
-        {
-            std::function<void()> task;
-            {
-                std::unique_lock<std::mutex> lock(_queue_mutex);
-                _queue_cv.wait(lock, [&] {
-                    return !is_running || !_tasks.empty();
-                });
-                if (!is_running)
-                    return;
-                task = std::move(_tasks.front());
-                _tasks.pop();
-            }
-            task();
-        }
-    }
-};
 
 template <typename Type>
 class Property
 {
 public:
+    Property property(std::string name)
+    {
+
+    }
     Type get()
     {
         // thread pool 바깥이면 set이 끝나면 수행
