@@ -52,7 +52,7 @@ namespace Bn3Monkey
         // @brief TaskScope의 현재 상태를 받아온다.
         ScopeStatus getStatus();
         inline const char* getName() const {return _name; }
-        inline std::thread::id getId() cosnt { return _id;}
+        inline std::thread::id getID() cosnt { return _id;}
         
         // Task Scope를 생성한 쓰레드에서 이 작업을 수행해야 한다.
         
@@ -71,19 +71,14 @@ namespace Bn3Monkey
         const char* _name;
 
         // 현재 수행하고 있는 task의 이름
-        char task_name[256] = {0};
+        char _task_name[256] = {0};
         // 이 Scope를 호출한 Scope
         TaskScopeImpl* _called_scope {nullptr};
         // 이 Scope가 호출한 Scope
         TaskScopeImpl* _calling_scope {nullptr};
 
         // 현재 이 스코프에 배당된 작업들
-        ScopeStatus _status;
-
-        struct NamedTask {
-            char name[256] = {0};
-            std::function<void()> task;
-        }
+        std::atomic<ScopeStatus> _status;
 
         std::queue<NamedTask> _tasks;
         std::mutex _task_mtx;
@@ -91,7 +86,6 @@ namespace Bn3Monkey
         
         std::thread _worker;
         std::thread::id _worker_id;
-        bool is_running;
 
         // 일정 시간이 지나면 이 쓰레드를 어플리케이션 쓰레드 목록에서 내려 버린다.
         const std::chrono::seconds timeout {5};
