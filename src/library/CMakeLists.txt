@@ -16,5 +16,11 @@ add_library(bn3monkey_library
     SHARED
     ${SOURCE_FILES})
 
+
+set(T)    
+add_executable(ScopedTaskRunnerTest
+    ${SOURCE_FILES}
+    )
+
 set_property(TARGET bn3monkey_library PROPERTY CXX_STANDARD 17)
 set_property(TARGET bn3monkey_library PROPERTY CXX_STANDARD_REQUIRED ON)

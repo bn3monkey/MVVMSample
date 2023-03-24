@@ -34,8 +34,8 @@
 #define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
 #else
 #define LOG_D(text, ...)    
-#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, __VA_ARGS__)
-#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_V(text, ...) 
+#define LOG_E(text, ...)
 #endif
 
 namespace Bn3Monkey

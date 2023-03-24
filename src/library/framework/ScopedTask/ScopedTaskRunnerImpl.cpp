@@ -59,7 +59,7 @@ void ScopedTaskRunnerImpl::manager()
             request.scope.start();
         }
         else {
-            LOG_V("Manager starts Worker (%s)", request.scope.name());
+            LOG_V("Manager stops Worker (%s)", request.scope.name());
             request.scope.stop();
         }
     }
