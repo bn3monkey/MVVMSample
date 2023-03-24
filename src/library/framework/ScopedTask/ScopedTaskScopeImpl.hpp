@@ -60,11 +60,13 @@ namespace Bn3Monkey
         void start()
         {
             _state = ScopeState::EMPTY;
-            _thread.join();
+            _thread = _thread([&](){worker()});
         }
         void stop()
         {
             _state = ScopeState::IDLE;
+            _id = std::thread::id();
+            
             _thread.join();
         }
 
@@ -115,9 +117,12 @@ namespace Bn3Monkey
 
     private:
         ScopedTaskScopeImpl* getCurrentScope() {
+            auto id = std::this_thread::get_id();
             for (auto& iter : _scopes) {
-                if ()
+                if (id == iter.second._id)
+                    return &(iter.second);
             }
+            return nullptr;
         }
 
         static std::unorderd_map<std::string, ScopedTaskScopeImpl> _scopes;
