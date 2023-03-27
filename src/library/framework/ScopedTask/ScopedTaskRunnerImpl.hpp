@@ -61,6 +61,10 @@ namespace Bn3Monkey
         std::mutex _request_mtx;
         std::condition_variable _request_cv;
 
+        bool _is_request_done {false};
+        std::mutex _response_mtx;
+        std::condition_variable _response_cv;
+
         void manager();
         
     };
