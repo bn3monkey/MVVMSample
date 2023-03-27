@@ -1,6 +1,6 @@
 #include "ScopedTask.hpp"
 #include "ScopedTaskScopeImpl.hpp"
-/*
+
 class Fuck
 {
 public:
@@ -37,14 +37,14 @@ void func2(int a)
 void testScopedTask()
 {
     using namespace Bn3Monkey;
-    ScopedTaskResultImpl<int> r1("result 1", []() {}, []() {});
+    ScopedTaskResultImpl<int> r1("result 1");
     ScopedTaskNotifier<int> p1("result 1", &r1);
 
-    ScopedTaskResultImpl<void> r2("result 2", []() {}, []() {});
+    ScopedTaskResultImpl<void> r2("result 2");
     ScopedTaskNotifier<void> p2("result 2", &r2);
 
-    ScopedTask task1("task1", []() {}, []() {});
-    ScopedTask task2("task2", []() {}, []() {});
+    ScopedTask task1("task1");
+    ScopedTask task2("task2");
     auto result1 = task1.make(func1, 1, 2);
     auto result2 = task2.make(func2, 1);
 
@@ -73,9 +73,6 @@ bool _is_running;
 std::mutex _request_mtx;
 std::condition_variable _request_cv;
 
-std::mutex _response_mtx;
-std::condition_variable _response_cv;
-
 void manager()
 {
     LOG_V("Manager starts");
@@ -92,6 +89,21 @@ void manager()
                 });
             if (!_is_running)
             {
+                LOG_D("Clear All Requests");
+                while (!_requests.empty())
+                {
+                    request = std::move(_requests.front());
+                    _requests.pop();
+                    if (request.is_activated)
+                    {
+                        LOG_D("Manager starts Worker (%s)", request.scope->name());
+                        request.scope->start();
+                    }
+                    else {
+                        LOG_D("Manager stops Worker (%s)", request.scope->name());
+                        request.scope->stop();
+                    }
+                }
                 break;
             }
             request = std::move(_requests.front());
@@ -108,15 +120,12 @@ void manager()
             request.scope->stop();
         }
 
-        {
-            std::unique_lock<std::mutex> lock(_response_mtx);
-            *request.is_done = true;
-        }
-        _response_cv.notify_one();
     }
     
+
+    Bn3Monkey::ScopedTaskScopeImpl::clearScope();
 }
-void start(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
+bool start(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
 {
     LOG_V("Request manager to start task scope (%s)", task_scope.name());
     
@@ -124,19 +133,21 @@ void start(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
 
     {
         std::unique_lock<std::mutex> lock(_request_mtx);
+        if (!_is_running)
+        {
+            LOG_D("Request manager is stopped");
+            return false;
+        }
+
         _requests.emplace(&task_scope, true, &is_done);
     }
-    _request_cv.notify_all();
 
-    {
-        std::unique_lock<std::mutex> lock(_response_mtx);
-        _response_cv.wait(lock, [&]() {
-            return is_done;
-        });
-    }
+    _request_cv.notify_all();
+    return true;
 }
-void stop(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
+bool stop(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
 {
+
     LOG_V("Request manager to stop task scope (%s)", task_scope.name());
     bool is_done{ false };
 
@@ -145,44 +156,48 @@ void stop(Bn3Monkey::ScopedTaskScopeImpl& task_scope)
             std::unique_lock<std::mutex> lock(_request_mtx);
             _requests.emplace(&task_scope, false, &is_done);
         }
+
+
+       if (!_is_running)
+       {
+           LOG_D("Request manager is stopped");
+           return false;
+       }
         _request_cv.notify_all();
     }
-
-    {
-        std::unique_lock<std::mutex> lock(_response_mtx);
-        _response_cv.wait(lock, [&]() {
-            return is_done;
-            });
-    }
+    return true;
 }
 
 void testScopedTaskScope()
 {
+    bool error[100]{ false };
+
+    error[1] = false;
 
 
     using namespace Bn3Monkey;
     auto* main = ScopedTaskScopeImpl::getScope("main",
         [](ScopedTaskScopeImpl& scope) {
-            start(scope);
+            return start(scope);
         },
         [](ScopedTaskScopeImpl& scope) {
-            stop(scope);
+            return stop(scope);
         });
 
     auto* device = ScopedTaskScopeImpl::getScope("device",
         [](ScopedTaskScopeImpl& scope) {
-            start(scope);
+            return start(scope);
         },
         [](ScopedTaskScopeImpl& scope) {
-            stop(scope);
+            return stop(scope);
         });
 
     auto* ip = ScopedTaskScopeImpl::getScope("ip",
         [](ScopedTaskScopeImpl& scope) {
-            start(scope);
+            return start(scope);
         },
         [](ScopedTaskScopeImpl& scope) {
-            stop(scope);
+            return stop(scope);
         });
 
     _is_running = true;
@@ -192,8 +207,8 @@ void testScopedTaskScope()
         for (int count = 5; count != 0; count -= 1)
         {
             using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1s);
-            printf("Count : %d\n", count);
+            std::this_thread::sleep_for(0.2s);
+            printf("\nCount : %d\n\n", count);
         }
         });
 
@@ -201,38 +216,38 @@ void testScopedTaskScope()
         for (int count = 3; count != 0; count -= 1)
         {
             using namespace std::chrono_literals;
-            std::this_thread::sleep_for(1s);
-            printf("SANS : %d\n", count);
+            std::this_thread::sleep_for(0.2s);
+            printf("\nSANS : %d\n\n", count);
         }
         });
     
     auto main1 = main->call("main1", [&]() {
-        printf("Main1\n");
+        printf("\nMain1\n\n");
         auto deviceA = device->call("deviceA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.1s);
-            printf("deviceA\n");
+            printf("\ndeviceA\n\n");
             return 1;
             });
         auto deviceB = device->call("deviceB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.3s);
-            printf("deviceB\n");
+            printf("\ndeviceB\n\n");
             return 10;
             });
 
         auto ipA = ip->call("ipA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.2s);
-            printf("ipA\n");
+            printf("\nipA\n\n");
             return 100;
             });
         auto ipB = ip->call("ipB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.4s);
-            printf("ipB\n");
+            printf("\nipB\n\n");
             return 1000;
             });
 
@@ -266,39 +281,39 @@ void testScopedTaskScope()
                 sum += *ret;
             }
         }
-        printf("Sum : %d\n", sum);
+        printf("\nSum : %d\n\n", sum);
         });
     main1.wait();
     
     printf("-------- Main 1 Relaunch! --------\n");
 
     main->call("main1", [&]() {
-        printf("Main1\n");
+        printf("\nMain1\n\n");
         auto deviceA = device->call("deviceA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.1s);
-            printf("deviceA\n");
+            printf("\ndeviceA\n\n");
             return 1;
             });
         auto deviceB = device->call("deviceB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.3s);
-            printf("deviceB\n");
+            printf("\ndeviceB\n\n");
             return 10;
             });
 
         auto ipA = ip->call("ipA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.2s);
-            printf("ipA\n");
+            printf("\nipA\n\n");
             return 100;
             });
         auto ipB = ip->call("ipB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.4s);
-            printf("ipB\n");
+            printf("\nipB\n\n");
             return 1000;
             });
 
@@ -332,38 +347,38 @@ void testScopedTaskScope()
                 sum += *ret;
             }
         }
-        printf("Sum : %d\n", sum);
+        printf("\nSum : %d\n\n", sum);
         });
 
-    printf("-------- Main 1 Relaunch! --------\n");
+    printf("\n-------- Main 1 Relaunch! --------\n\n");
 
     auto main11 = main->call("main1", [&]() {
-        printf("Main1\n");
+        printf("\nMain1\n\n");
         auto deviceA = device->call("deviceA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.1s);
-            printf("deviceA\n");
+            printf("\ndeviceA\n\n");
             return 1;
             });
         auto deviceB = device->call("deviceB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.3s);
-            printf("deviceB\n");
+            printf("\ndeviceB\n\n");
             return 10;
             });
 
         auto ipA = ip->call("ipA", [&]() {
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.2s);
-            printf("ipA\n");
+            printf("\nipA\n\n");
             return 100;
             });
         auto ipB = ip->call("ipB", [&]() {
 
             using namespace std::chrono_literals;
             std::this_thread::sleep_for(0.4s);
-            printf("ipB\n");
+            printf("\nipB\n\n");
             return 1000;
             });
 
@@ -397,26 +412,30 @@ void testScopedTaskScope()
                 sum += *ret;
             }
         }
-        printf("Sum : %d\n", sum);
+        printf("\nSum : %d\n\n", sum);
         return sum;
         });
 
     auto main_ret = main11.wait();
     if (main_ret)
     {
-        printf("%d\n", *main_ret);
+        printf("\nmain_ret : %d\n\n", *main_ret);
     }
 
     auto main2 = main->call("main2", [&]() {
-        printf("main2\n");
+        printf("\nmain2\n\n");
         auto device2 = device->call("device2", [&]() {
-            printf("device2\n");
-            printf("maybe error");
-            auto main3 = main->call("main3", [&]() {
-                return 4;
-            });
-            auto* main3_result = main3.wait();
-            return 3;
+            printf("\ndevice2\n\n");
+
+            if (error[0])
+            {
+                printf("\nmaybe error\n\n");
+                auto main3 = main->call("main3", [&]() {
+                    return 4;
+                    });
+                auto* main3_result = main3.wait();
+                return 3;
+            }
         });
         auto* device2_ret = device2.wait();
         return 2;
@@ -424,21 +443,23 @@ void testScopedTaskScope()
     auto ret2 = main2.wait();
     if (ret2)
     {
-        printf("%d\n", *ret2);
+        printf("\nret2 : %d\n\n", *ret2);
     }
 
     auto main3 = main->call("main3", [&]() {
-        printf("main3\n");
+        printf("\nmain3\n\n");
         auto device3 = device->call("device3", [&]() {
-            printf("device3\n");
+            printf("\ndevice3\n\n");
             auto ip3 = ip->call("ip3", [&]() {
-                printf("ip3\n");
-                printf("maybe error!");
-                auto main4 = main->call("main4", [&]() {
-
-                    });
-
-                return 4;
+                printf("\nip3\n\n");
+                printf("\nmaybe error!\n\n");
+                if (error[1])
+                {
+                    auto main4 = main->call("main4", [&]() {
+                        printf("\nmain4\n\n");
+                        });
+                    return 4;
+                }
                 });
             auto* ip3_result = ip3.wait();
             return 3;
@@ -449,9 +470,44 @@ void testScopedTaskScope()
     auto ret3 = main3.wait();
     if (ret3)
     {
-        printf("%d\n", *ret3);
+        printf("\nret3 : %d\n\n", *ret3);
     }
 
+
+    using namespace std::chrono_literals;
+
+    class SANS
+    {
+    public:
+        SANS(int a)
+        {
+            this->a = a;
+        }
+        int a;
+    };
+
+    auto ip_start = ip->call("ip_start", [&]() {
+        printf("\nip Start\n\n");
+        return SANS(2);
+        });
+
+    std::this_thread::sleep_for(9.5s);
+    auto* sans2 = ip_start.wait();
+    if (sans2)
+    {
+        printf("\nSANS : %d\n\n", sans2->a);
+    }
+
+    std::this_thread::sleep_for(1s);
+    auto ip_end = ip->call("ip_end", [&]() {
+        printf("\nip End\n\n");
+        return SANS(4);
+        });
+    auto* sans4 = ip_end.wait();
+    if (sans4)
+    {
+        printf("\nSANS : %d\n\n", sans4->a);
+    }
 
     _is_running = false;
     _request_cv.notify_all();
@@ -462,30 +518,4 @@ void main()
 {
     testScopedTaskScope();
     return;
-}
-*/
-
-class SANS
-{
-public:
-    bool fuck {false};
-    std::function<void()> _function;
-
-    SANS() {
-        _function = [&]() {
-            fuck = true;
-        };
-    }
-    void operator()() {
-        _function();
-    }
-};
-
-void main()
-{
-    SANS sans1;
-    SANS sans2 = sans1;
-
-    sans2();
-    printf("sans?");
 }

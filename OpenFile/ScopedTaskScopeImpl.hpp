@@ -54,8 +54,8 @@ namespace Bn3Monkey
     public:
 
         explicit ScopedTaskScopeImpl(const char* scope_name,
-            std::function<void(ScopedTaskScopeImpl&)> onStart,
-            std::function<void(ScopedTaskScopeImpl&)> onStop) :
+            std::function<bool(ScopedTaskScopeImpl&)> onStart,
+            std::function<bool(ScopedTaskScopeImpl&)> onStop) :
             _onStart(onStart),
             _onStop(onStop)
         {
@@ -83,15 +83,21 @@ namespace Bn3Monkey
 
         void start()
         {
-            _state = ScopeState::EMPTY;
-            _thread = std::thread([&]() {worker(); });
+            if (_state == ScopeState::IDLE)
+            {
+                _state = ScopeState::EMPTY;
+                _thread = std::thread([&]() {worker(); });
+            }
         }
         void stop()
         {
-            _state = ScopeState::IDLE;
-            _id = std::thread::id();
-            _cv.notify_all();
-            _thread.join();
+            if (_state != ScopeState::IDLE)
+            {
+                _state = ScopeState::IDLE;
+                _id = std::thread::id();
+                _cv.notify_all();
+                _thread.join();
+            }
         }
 
         template<class Func, class... Args>
@@ -100,108 +106,104 @@ namespace Bn3Monkey
             // Scope가 꺼져있으면 스코프 키기
             // 자기 자신 Scope에서 불렀으면 무조건 ScopeState는 Running
             // 다른 Scope에서 불렀으면 IDLE, EMPTY, READY, RUNNING 중 하나
+
+            // ScopeTask 수행 요청하기
+            ScopedTask task{ task_name };
+            task.make(std::forward<Func>(func), std::forward<Args>(args)...);
+
             {
                 std::unique_lock<std::mutex> lock(_mtx);
                 if (ScopeState::IDLE == _state)
                 {
-                    _onStart(*this);
-                    // Start가 실행된 다음에 다음으로 넘어감.
-                    // 무조건 다음 State가 EMPTY인 게 보장됨
-                    if (ScopeState::EMPTY != _state)
-                        LOG_E("Scope(%s) State is not empty when after starting scope.", _name);
+                    bool ret = _onStart(*this);
+                    if (!ret)
+                    {
+                        LOG_D("Task Runner is not initialized");
+                        return;
+                    }
+                    _cv.wait(lock, [&]() {
+                        return _state == ScopeState::EMPTY;
+                        });
                 }
-            }
+
+                // 생성된 ScopeTask의 onTaskFinished에 
+                // 아무것도 없음
+
+                // 생성된 ScopeTask의 onTaskWaiting에
+                // 아무것도 없음
+                
+                // 이 때 10분이 지나서 꺼지면 어떡함?
 
 
-            // 생성된 ScopeTask의 onTaskFinished에 
-            // 아무것도 없음
-
-            // 생성된 ScopeTask의 onTaskWaiting에
-            // 아무것도 없음
-
-            // ScopeTask 수행 요청하기
-            ScopedTask task{ task_name, []() {}, []() {} };
-            task.make(std::forward<Func>(func), std::forward<Args>(args)...);
-            {
-                std::unique_lock<std::mutex> lock(_mtx);
                 _tasks.push(task);
                 if (_state == ScopeState::EMPTY)
                     _state = ScopeState::READY;
             }
+
             _cv.notify_all();
         }
 
         template<class Func, class... Args>
         auto call(const char* task_name, Func&& func, Args&&... args) -> ScopedTaskResultImpl<decltype(func(args...))>
         {
+            // ScopeTask 수행 요청하기
+            ScopedTask task{ task_name };
+            auto ret = task.make(std::forward<Func>(func), std::forward<Args>(args)...);
 
+            // 현재 스코프와 호출한 스코프가 같은 경우 바로 실행하기
             auto* current_scope = getCurrentScope();
             if (compare(current_scope))
             {
-                // 현재 스코프와 이 소코프가 같으면 바로 작동시키기
-                ScopedTask task{ task_name, []() {}, []() {} };
-                auto ret = task.make(std::forward<Func>(func), std::forward<Args>(args)...);
                 task.invoke();
                 return ret;
             }
-
+            
             // 현재 스코프와 이 스코프가 같지 않은 경우
             {
                 // Scope가 꺼져있으면 스코프 키기
                 std::unique_lock<std::mutex> lock(_mtx);
                 if (ScopeState::IDLE == _state)
                 {
-                    _onStart(*this);
-                    // Start가 실행된 다음에 다음으로 넘어감.
-                    // 무조건 다음 State가 EMPTY인 게 보장됨
-                    if (ScopeState::EMPTY != _state)
+                    bool ret = _onStart(*this);
+                    if (!ret)
                     {
-                        LOG_E("Scope(%s) State is not empty when after starting scope.", _name);
+                        LOG_D("Task Runner is not initialized");
+                        assert(false);
+                    }
+                    _cv.wait(lock, [&]() {
+                        return _state == ScopeState::EMPTY;
+                        });
+                }
+                                
+                if (current_scope)
+                {
+                    auto& current_task = current_scope->_current_task;
+                    if (current_task.isInStack(_name))
+                    {
+                        LOG_E("This Task is already in scope (%s)", _name);
+                        assert(false);
+
+                    }
+                    
+                    auto* current_scope_name = current_scope->_name;
+                    if (!task.addStack(current_task, current_scope_name))
+                    {
+                        LOG_E("This Task cannot be added to scope %s", current_scope_name);
                         assert(false);
                     }
                 }
-            }
 
-
-
-            // 현재 스코프의 call stack에 이 스코프가 있으면 순환 호출이 되므로 오류 메세지와 함께 반려시키기
-            {
-                if (isAlreadyCalled(current_scope))
+                _tasks.push(task);
+                if (_state == ScopeState::EMPTY)
+                    _state = ScopeState::READY;
+                else if (_state == ScopeState::IDLE)
                 {
-                    LOG_E("current_scope is already called");
+                    LOG_E("Scope(%s) State is not empty when after starting scope.", _name);
                     assert(false);
                 }
             }
 
-            // 현재 스코프의 calling Scope에 이 스코프를 넣기
-            // 이 스코프의 called Scope에 현재 스코프를 넣기 
-            onTaskStartedFromCallingScope(current_scope);
-
-            // 생성된 ScopeTask의 onTaskFinished에 
-            // 2. 이 스코프의 result_cv에 알람주기
-            auto onTaskFinished = [&]() {
-                onTaskFinishedFromCallingScope();
-            };
-
-            // 생성된 ScopeTask의 onTaskWaiting에
-            // 1. 이 스코프의 result_cv에서 기다리기
-            // 2. 현재 스코프의 calling Scope에 이 스코프를 빼는 것과
-            // 이 스코프의 called Scope에 현재 스코프를 빼기
-            auto onTaskWaiting = [&]() {
-                onTaskWaitingFromCallingScope();
-            };
-
-            // ScopeTask 수행 요청하기
-            ScopedTask task{ task_name, onTaskWaiting, onTaskFinished };
-            auto ret = task.make(std::forward<Func>(func), std::forward<Args>(args)...);
-            {
-                std::unique_lock<std::mutex> lock(_mtx);
-                _tasks.push(task);
-                if (_state == ScopeState::EMPTY)
-                    _state = ScopeState::READY;
-            }
             _cv.notify_all();
-
             return ret;
         }
 
@@ -209,8 +211,8 @@ namespace Bn3Monkey
         inline ScopeState state() { return _state; }
 
         static ScopedTaskScopeImpl* getScope(const char* scope_name,
-            std::function<void(ScopedTaskScopeImpl&)> onStart,
-            std::function<void(ScopedTaskScopeImpl&)> onStop)
+            std::function<bool(ScopedTaskScopeImpl&)> onStart,
+            std::function<bool(ScopedTaskScopeImpl&)> onStop)
         {
             auto iter = _scopes.find(scope_name);
             if (iter != _scopes.end())
@@ -220,6 +222,13 @@ namespace Bn3Monkey
             _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, onStop));
             auto& ret = _scopes.at(scope_name);
             return &ret;
+        }
+        static void clearScope()
+        {
+            for (auto& iter : _scopes)
+            {
+                iter.second.stop();
+            }
         }
 
     private:
@@ -239,124 +248,13 @@ namespace Bn3Monkey
                 return false;
             return _id == other->_id;
         }
-        bool isAlreadyCalled(ScopedTaskScopeImpl* current_scope) {
-            if (current_scope == nullptr)
-                return false;
-
-            FOR_DEBUG(int stack_number = 1;)
-            for (auto* calling_scope = current_scope; calling_scope != nullptr; calling_scope = calling_scope->_calling_scope)
-            {
-                if (compare(calling_scope))
-                    return true;
-                FOR_DEBUG(
-                    char* name = calling_scope->_name;
-                    LOG_D("Stack (%d) | %s", stack_number++, name);
-
-                    ScopeState state;
-                    {
-                        std::unique_lock<std::mutex> lock(_mtx);
-                        state = calling_scope->_state;
-                    }
-
-                    if (state == ScopeState::RUNNING)
-                    {
-                        const char* task_name = calling_scope->_current_task.name();
-                        LOG_D("   - Task (%s)", task_name);
-                    }
-                )
-            }
-            return false;
-        }
-
-        void onTaskStartedFromCallingScope(ScopedTaskScopeImpl* calling_scope) {
-
-            if (calling_scope != nullptr)
-            {
-                LOG_D("Scope (%s) : Task Started", calling_scope->_name);
-                std::unique_lock<std::mutex> lock(_mtx);
-                calling_scope->_called_scope = this;
-                this->_calling_scope = calling_scope;
-                LOG_D("Stack Task!");
-            }
-            else
-            {
-                LOG_D("Task Started from external thread");
-                LOG_D("Stack Task!");
-            }
-            FOR_DEBUG(
-                for (auto* calling_scope = this; calling_scope != nullptr; calling_scope = calling_scope->_calling_scope)
-                {
-                    auto* name = calling_scope->_name;
-                    LOG_D(" - Scope (%s)", name);
-                }
-            )
-        }
-
-        void onTaskFinishedFromCallingScope() {
-            auto* name = _calling_scope->_name;
-            if (_calling_scope)
-            {
-                std::unique_lock<std::mutex> lock(_mtx);
-                if (_state == ScopeState::WAITING)
-                {
-                    LOG_D("Scope (%s) : Task Finished with notifying", name);
-                    _state = ScopeState::RUNNING;
-                }
-                else if (_state == ScopeState::RUNNING)
-                {
-                    LOG_D("Scope (%s) : Task Finished without notifying", name);
-                }
-                else if (_state == ScopeState::IDLE)
-                {
-                    LOG_D("Scope (%s) : Task Cancelled", name);
-                }
-
-                
-            }
-            _cv.notify_all();
-        }
-        void onTaskWaitingFromCallingScope() {
-            if (_calling_scope)
-            {
-                auto* name = _calling_scope->_name;
-                std::unique_lock<std::mutex> lock(_mtx);
-                _state = ScopeState::WAITING;
-                LOG_D("Scope (%s) : Task Waiting", name);
-
-                _cv.wait(lock, [&]() {
-                    return _state != ScopeState::WAITING;
-                    });
-
-                FOR_DEBUG(
-                    for (auto* calling_scope = _calling_scope; calling_scope != nullptr; calling_scope = calling_scope->_calling_scope)
-                    {
-                        auto* name = calling_scope->_name;
-                        LOG_D(" - Scope (%s)", name);
-                    }
-                )
-
-                _calling_scope->_called_scope = nullptr;
-                this->_calling_scope = nullptr;
-                LOG_D("Unstack Task!");
-            }
-            else
-            {
-                std::unique_lock<std::mutex> lock(_mtx);
-
-                _state = ScopeState::WAITING;
-                LOG_D("No Scope : Task Waiting");
-                _cv.wait(lock, [&]() {
-                    return _state != ScopeState::WAITING;
-                    });
-            }
-        }
 
         static std::unordered_map<std::string, ScopedTaskScopeImpl> _scopes;
 
         char _name[256]{ 0 };
 
-        std::function<void(ScopedTaskScopeImpl&)> _onStart;
-        std::function<void(ScopedTaskScopeImpl&)> _onStop;
+        std::function<bool(ScopedTaskScopeImpl&)> _onStart;
+        std::function<bool(ScopedTaskScopeImpl&)> _onStop;
 
         std::thread _thread;
         std::thread::id _id;
@@ -374,7 +272,9 @@ namespace Bn3Monkey
         void worker()
         {
             LOG_D("Worker (%s) Start", _name);
-            
+            _id = std::this_thread::get_id();
+            _cv.notify_all();
+
             for (;;)
             {
 
@@ -389,11 +289,27 @@ namespace Bn3Monkey
                     if (!is_timeout && _tasks.empty())
                     {
                         LOG_D("Worker (%s) : time out", _name);
-                        _onStop(*this);
+                        bool ret = _onStop(*this);
+                        if (!ret)
+                        {
+                            LOG_D("Task Runner is not initialized");
+                            return;
+                        }
+                        _cv.wait(lock, [&]() {
+                            return _state == ScopeState::IDLE;
+                            });
                     }
 
                     if (_state == ScopeState::IDLE)
                     {
+                        LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name);
+                        while (!_tasks.empty())
+                        {
+                            _current_task = std::move(_tasks.front());
+                            _tasks.pop();
+                            _current_task.cancel();
+                        }
+                        LOG_D("Worker (%s) Ends", _name);
                         break;
                     }
 
@@ -420,15 +336,6 @@ namespace Bn3Monkey
                     }
                 }
             }
-
-            LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name);
-            while (!_tasks.empty())
-            {
-                _current_task = std::move(_tasks.front());
-                _tasks.pop();
-                _current_task.cancel();
-            }
-            LOG_D("Worker (%s) Ends", _name);
         }
 
     };
