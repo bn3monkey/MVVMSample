@@ -5,8 +5,11 @@
 #include <mutex>
 #include <condition_variable>
 #include <type_traits>
+#include <chrono>
+#include <queue>
+#include <cassert>
 
-#include "../Log/Log.hpp"
+#include "Log.hpp"
 
 #define BN3MONKEY_DEBUG
 
@@ -30,6 +33,7 @@
 #define LOG_E(text, ...)
 #endif
 
+
 namespace Bn3Monkey
 {
     template<class ResultType>
@@ -37,6 +41,9 @@ namespace Bn3Monkey
 
     template<class ReturnType>
     class ScopedTaskNotifier;
+
+    template<class ReturnType>
+    class ScopedTaskCanceller;
 
     template <class ResultType>
     void linkThisToResult(ScopedTaskNotifier<ResultType>* notifier, ScopedTaskResultImpl<ResultType>* result);
@@ -49,8 +56,9 @@ namespace Bn3Monkey
     enum class ScopedTaskState
     {
         NOT_FINISHED, // 작업이 끝나기 전일 떄
-        DISCARDED, // Worker가 강제로 종료되어 처리할 수 없게 되었을 때
+        CANCELLED, // Worker가 강제로 종료되어 처리할 수 없게 되었을 때
         FINISHED, // 작업이 끝났을 때
+        INVALID // 이미 기다림이 완료되었을 떄
     };
 
     template<class ResultType>
@@ -61,28 +69,22 @@ namespace Bn3Monkey
 
     public:
         ScopedTaskResultImpl(
-            const char* task_name,
-            std::function<void()> onTaskWaiting,
-            std::function<void()> onTaskFinished)
-            : _onTaskWaiting(onTaskWaiting),
-            _onTaskFinished(onTaskFinished)
+            const char* task_name)
         {
             memcpy(_name, task_name, 256);
-            LOG_V("Task Result Impl Created (%s)", _name);
+            LOG_D("Task Result Impl Created (%s)", _name);
         }
         virtual ~ScopedTaskResultImpl()
         {
             if (_notifier)
             {
-                LOG_V("Task Result is valid (%s)", _name);
+                LOG_D("Task Result is valid (%s)", _name);
                 unlinkNotifier(_notifier);
             }
-            LOG_V("Task Result Impl Released (%s)", _name);
+            LOG_D("Task Result Impl Released (%s)", _name);
         }
         ScopedTaskResultImpl(const ScopedTaskResultImpl& other) = delete;
         ScopedTaskResultImpl(ScopedTaskResultImpl&& other)
-            : _onTaskWaiting(std::move(other._onTaskWaiting)),
-            _onTaskFinished(std::move(other._onTaskFinished))
         {
             memcpy(_name, other._name, 256);
             memset(other._name, 0, 256);
@@ -93,29 +95,51 @@ namespace Bn3Monkey
             _notifier = other._notifier;
             other._notifier = nullptr;
             linkThisToNotifier(this, _notifier);
-            LOG_V("Task Result moved (%s)", _name);
+            LOG_D("Task Result moved (%s)", _name);
         }
 
-        void cancel() {
+        void cancel()
+        {
             LOG_V("Cancelled by Task Result (%s)", _name);
-            state = ScopedTaskState::DISCARDED;
-            _onTaskFinished();
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                state = ScopedTaskState::CANCELLED;
+            }
+            _cv.notify_all();
         }
+
         void notify(const ResultType& result) {
             LOG_V("Notified by Task Result (%s)", _name);
             memcpy(_result, &result, sizeof(ResultType));
-            state = ScopedTaskState::FINISHED;
-            _onTaskFinished();
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                state = ScopedTaskState::FINISHED;
+            }
+            _cv.notify_all();
         }
+
         ResultType* wait() {
+            if (state == ScopedTaskState::INVALID)
+            {
+                LOG_E("This task (%s) is already waited!\n", _name);
+                assert(false);
+            }
+
             LOG_V("Waited by Task Result (%s)", _name);
             // 처리하고 있는 Scope가 처리가 끝나면 알려준다.
-            _onTaskWaiting();
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                _cv.wait(lock, [&]() {
+                    return state != ScopedTaskState::NOT_FINISHED;
+                    });
+            }
             ResultType* ret{ nullptr };
             if (state == ScopedTaskState::FINISHED)
                 ret = (ResultType*)_result;
+            state = ScopedTaskState::INVALID;
             return ret;
         }
+        const char* name() { return _name; }
 
     private:
         char _name[256]{ 0 };
@@ -124,6 +148,10 @@ namespace Bn3Monkey
         std::function<void()> _onTaskFinished;
         char _result[sizeof(ResultType)]{ 0 };
         ScopedTaskNotifier<ResultType>* _notifier;
+
+        // Not moved. Just use.
+        std::mutex _mtx;
+        std::condition_variable _cv;
     };
 
     template<>
@@ -134,11 +162,7 @@ namespace Bn3Monkey
 
     public:
         ScopedTaskResultImpl<void>(
-            const char* task_name,
-            std::function<void()> onTaskWaiting,
-            std::function<void()> onTaskFinished)
-            : _onTaskWaiting(onTaskWaiting),
-            _onTaskFinished(onTaskFinished) {
+            const char* task_name) {
             memcpy(_name, task_name, 256);
             LOG_V("Task Result Impl Created (%s)", _name);
         }
@@ -153,8 +177,6 @@ namespace Bn3Monkey
         }
         ScopedTaskResultImpl(const ScopedTaskResultImpl& other) = delete;
         ScopedTaskResultImpl(ScopedTaskResultImpl&& other)
-            : _onTaskWaiting(std::move(other._onTaskWaiting)),
-            _onTaskFinished(std::move(other._onTaskFinished))
         {
             memcpy(_name, other._name, 256);
             memset(other._name, 0, 256);
@@ -164,28 +186,53 @@ namespace Bn3Monkey
             linkThisToNotifier(this, _notifier);
             LOG_V("Task Result moved (%s)", _name);
         }
-        void cancel() {
+        void cancel()
+        {
             LOG_V("Cancelled by Task Result (%s)", _name);
-            state = ScopedTaskState::DISCARDED;
-            _onTaskFinished();
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                state = ScopedTaskState::CANCELLED;
+            }
+            _cv.notify_all();
         }
         void notify() {
             LOG_V("Notified by Task Result (%s)", _name);
-            state = ScopedTaskState::FINISHED;
-            _onTaskFinished();
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                state = ScopedTaskState::FINISHED;
+            }
+            _cv.notify_all();
         }
         void wait() {
+            if (state == ScopedTaskState::INVALID)
+            {
+                LOG_E("This task (%s) is already waited!\n", _name);
+                assert(false);
+            }
+
             LOG_V("Waited by Task Result (%s)", _name);
             // wait을 호출한 Scope가 있다면, 기다리는 중임을 알린다.
             // 처리하고 있는 Scope가 처리가 끝나면 알려준다.
-            _onTaskWaiting();
+
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                _cv.wait(lock, [&]() {
+                    return state != ScopedTaskState::NOT_FINISHED;
+                    });
+            }
+            state = ScopedTaskState::INVALID;          
         }
+        const char* name() { return _name; }
     private:
         char _name[256]{ 0 };
         ScopedTaskState state{ ScopedTaskState::NOT_FINISHED };
         std::function<void()> _onTaskWaiting;
         std::function<void()> _onTaskFinished;
         ScopedTaskNotifier<void>* _notifier;
+
+        // Not moved. Just use.
+        std::mutex _mtx;
+        std::condition_variable _cv;
     };
 
     template<class ResultType>
@@ -240,6 +287,7 @@ namespace Bn3Monkey
                 _result->notify(result);
             }
         }
+        const char* name() { return _name; }
     private:
         ScopedTaskResultImpl<ResultType>* _result{ nullptr };
         char _name[256]{ 0 };
@@ -297,6 +345,7 @@ namespace Bn3Monkey
                 _result->notify();
             }
         }
+        const char* name() { return _name; }
     private:
         ScopedTaskResultImpl<void>* _result{ nullptr };
         char _name[256]{ 0 };
@@ -309,40 +358,109 @@ namespace Bn3Monkey
         explicit ScopedTask() {
             LOG_V("Scoped Task Not Initialized");
         }
-        ScopedTask(const char* name,
-            std::function<void()> onTaskWaiting,
-            std::function<void()> onTaskFinished) :
-            _onTaskWaiting(onTaskWaiting),
-            _onTaskFinished(onTaskFinished)
+
+        ScopedTask(const char* name)
         {
             memcpy(_name, name, 256);
             LOG_V("Scoped Task (%s) Created", _name);
         }
+        
+        ScopedTask(const ScopedTask& other) :
+            _invoke(other._invoke)
+        {
+            memcpy(_name, other._name, 256);
 
+            memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
+            _call_stack_size = other._call_stack_size;
+
+            LOG_V("Scoped Task (%s) Copied", _name);
+        }
+        
         ScopedTask(ScopedTask&& other)
             :
-            _notifier(std::move(other._notifier)),
-            _invoke(std::move(other._invoke)),
-            _cancel(std::move(other._cancel)),
-            _onTaskWaiting(std::move(other._onTaskWaiting)),
-            _onTaskFinished(std::move(other._onTaskFinished))
+            _invoke(std::move(other._invoke))
         {
             memcpy(_name, other._name, 256);
             memset(other._name, 0, 256);
+
+            memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
+            memset(other._call_stack, 0, max_call_stack_size * 256);
+            
+            _call_stack_size = other._call_stack_size;
+
             LOG_V("Scoped Task (%s) Moved", _name);
         }
 
+        ScopedTask& operator=(ScopedTask&& other)
+        {
+            _invoke = std::move(other._invoke);
+            memcpy(_name, other._name, 256);
+            memset(other._name, 0, 256);
+
+            memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
+            memset(other._call_stack, 0, max_call_stack_size * 256);
+
+            _call_stack_size = other._call_stack_size;
+
+            LOG_V("Scoped Task (%s) Moved", _name);
+            return *this;
+        }
+
         void invoke() {
-            _invoke();
+            _invoke(true);
         }
         void cancel() {
-            _cancel();
+            _invoke(false);
         }
+
         const char* name() {
             return _name;
         }
 
+        bool isInStack(const char* target_scope_name)
+        {
+            for (size_t i = 0; i < _call_stack_size; i++)
+            {
+                if (!strncmp(_call_stack[i], target_scope_name, 256))
+                {
+                    LOG_D("Stack (%d) has scope (%s)", i + 1, target_scope_name);
+                    return true;
+                }
+            }
+            return false;
+        }
+        bool addStack(ScopedTask& calling_task, const char* scope_name)
+        {
+            // 이 Task를 호출한 태스크의 콜스택에 이 Task가 수행되는 Scope를 추가하여 콜스택을 갱신함
+ 
+            // 콜 스택 안에 중복된 스코프를 호출하면 안되도록 해야함.
+            // 상호 대기가 될 수 있음
 
+            auto* super_call_stack = calling_task._call_stack;
+            size_t super_call_stack_size = calling_task._call_stack_size;
+            
+            _call_stack_size = calling_task._call_stack_size + 1;
+            if (_call_stack_size > max_call_stack_size)
+            {
+                LOG_D("Call stack size is over than max call stack size");
+                return false;
+            }
+
+            for (size_t i = 0; i < super_call_stack_size; i++)
+            {
+#ifdef _WIN32
+                strncpy_s(_call_stack[i], super_call_stack[i], 256);
+#else
+                strncpy(_call_stack[i], super_call_stack[i], 256);
+#endif
+            }
+#ifdef _WIN32
+            strncpy_s(_call_stack[super_call_stack_size], scope_name, 256);
+#else
+            strncpy(_call_stack[super_call_stack_size], scope_name, 256);
+#endif
+            return true;
+        }
 
         template<class Func, class... Args>
         auto make(Func&& func, Args&&... args) -> ScopedTaskResultImpl<decltype(func(args...))>
@@ -350,19 +468,18 @@ namespace Bn3Monkey
             using ReturnType = decltype(func(args...));
 
             std::function<ReturnType()> onTaskRunning = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);
-            ScopedTaskResultImpl<ReturnType> result(_name, _onTaskWaiting, _onTaskFinished);
+            std::function<void()> _onTaskWaiting = []() {};
+            std::function<void()> _onTaskFinished = []() {};
+            ScopedTaskResultImpl<ReturnType> result(_name);
             ScopedTaskNotifier<ReturnType> notifier{ _name,  &result };
 
-            _notifier = [&, notifier]() mutable {
-                _invoke = [onTaskRunning = std::move(onTaskRunning), &notifier]() {
+            _invoke = [onTaskRunning = std::move(onTaskRunning), notifier](bool finished) mutable
+            {
+                if (finished)
                     invokeImpl(onTaskRunning, notifier);
-                };
-                _cancel = [this, &notifier]() {
+                else
                     cancelImpl(notifier);
-                };
             };
-            _notifier();
-
             return result;
         }
 
@@ -388,30 +505,54 @@ namespace Bn3Monkey
         }
 
         char _name[256]{ 0 };
-        std::function<void()> _notifier;
 
-        std::function<void()> _invoke;
-        std::function<void()> _cancel;
+        constexpr static size_t max_call_stack_size = 20;
+        char _call_stack[max_call_stack_size][256]{ 0 };
+        size_t _call_stack_size = 0;
+        
 
-        std::function<void()> _onTaskWaiting;
-        std::function<void()> _onTaskFinished;
+        std::function<void(bool)> _invoke;
     };
 
 
     template <class ResultType>
     void linkThisToResult(ScopedTaskNotifier<ResultType>* notifier, ScopedTaskResultImpl<ResultType>* result)
-    {
-        result->_notifier = notifier;
+    {        
+        if (result)
+        {
+            LOG_D("Link Notifier (%s) To Result (%s)", notifier->name(), result->name());
+            result->_notifier = notifier;
+        }
+        else
+        {
+            LOG_D("Result is null");
+        }
     }
     template <class ResultType>
     void linkThisToNotifier(ScopedTaskResultImpl<ResultType>* result, ScopedTaskNotifier<ResultType>* notifier)
     {
-        notifier->_result = result;
+        if (notifier)
+        {
+            LOG_D("Link Notifier (%s) To Result (%s)", notifier->name(), result->name());
+            notifier->_result = result;
+        }
+        else
+        {
+            LOG_D("Notifier is null");
+        }
     }
     template <class ResultType>
     void unlinkNotifier(ScopedTaskNotifier<ResultType>* notifier)
     {
-        notifier->_result = nullptr;
+        if (notifier)
+        {
+            LOG_D("unlink Notifier", notifier->name());
+            notifier->_result = nullptr;
+        }
+        else
+        {
+            LOG_D("Notifier is null");
+        }
     }
 
 }

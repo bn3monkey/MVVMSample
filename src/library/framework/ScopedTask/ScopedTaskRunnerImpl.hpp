@@ -2,6 +2,7 @@
 #define __BN3MONKEY_TASK_RUNNER_IMPL__
 
 #include "ScopedTaskHelper.hpp"
+#include "ScopedTaskImpl.hpp"
 #include "ScopedTaskScopeImpl.hpp"
 
 #include <functional>
@@ -50,20 +51,18 @@ namespace Bn3Monkey
 
     private:
         struct Request {
-            ScopedTaskScopeImpl& scope;
-            bool is_activiatd; 
-            Request(ScopedTaskScopeImpl& scope, bool is_activated) : scope(scope), is_activated(is_activated) {}
-        }
+            Bn3Monkey::ScopedTaskScopeImpl* scope {nullptr};
+            bool is_activated{false};
+            bool* is_done{ nullptr };
+            Request() {}
+            Request(Bn3Monkey::ScopedTaskScopeImpl* scope, bool is_activated, bool* is_done) : scope(scope), is_activated(is_activated), is_done(is_done) {}
+        };
 
         std::thread _thread;
         std::queue<Request> _requests;
         bool _is_running;
         std::mutex _request_mtx;
         std::condition_variable _request_cv;
-
-        bool _is_request_done {false};
-        std::mutex _response_mtx;
-        std::condition_variable _response_cv;
 
         void manager();
         

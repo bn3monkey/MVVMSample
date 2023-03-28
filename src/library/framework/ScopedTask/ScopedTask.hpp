@@ -10,17 +10,27 @@
 
 namespace Bn3Monkey
 {
-    
-    /* Call을 통해 호출할 경우, 디버깅을 위해 반드시 Call Stack을 만들어야 한다! */
+    template<class ReturnType>
+    class ScopedTaskResult;
+    class ScopedTaskScope;
+    class ScopedTaskRunner;
+
 
     template<class ReturnType>
     class ScopedTaskResult
     {
-    public:
-        // ScopedTaskRunner 
-        ReturnType* wait();
+    public: 
+        ReturnType* wait()
+        {
+            return _impl.wait();
+        }
     private:
-        std::shared_ptr<ScopedTaskResultImpl> _impl; 
+        friend class ScopedTaskScope;
+        ScopedTaskResult(ScopedTaskResultImpl&& impl)
+        {
+            _impl = impl;
+        }
+        ScopedTaskResultImpl _impl; 
     };
 
     class ScopedTaskScope
@@ -37,12 +47,13 @@ namespace Bn3Monkey
         template<class Func, class... Args>
         ScopedTask call(const char* task_name, Func&& func, Args&&... args)
         {
-            return _impl.call(task_name, std::forward<Func>(func), std::forward<Args>(args)...);
+            auto _result = _impl.call(task_name, std::forward<Func>(func), std::forward<Args>(args)...);
+            return ScopedTaskResult(_result);
         }
 
     private:
-        ScopedTaskImpl& getScope(const char* scope_name);
-        ScopedTaskImpl& _impl;
+        ScopedTaskScopeImpl& getScope(const char* scope_name);
+        ScopedTaskScopeImpl& _impl;
     };
 
     class ScopedTaskRunner
