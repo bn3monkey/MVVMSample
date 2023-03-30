@@ -1,6 +1,5 @@
 #include "ScopedTaskScopeImpl.hpp"
-
-std::unordered_map<std::string, Bn3Monkey::ScopedTaskScopeImpl> Bn3Monkey::ScopedTaskScopeImpl::_scopes;
+#include "ScopedTaskHelper.hpp"
 
 using namespace Bn3Monkey;
 
@@ -23,47 +22,65 @@ ScopedTaskScopeImpl::ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other)
       _id(std::move(other._id)),
       _state(std::move(other._state)),
       _current_task(std::move(other._current_task)),
-      _tasks(std::move(other._tasks)),
-      _calling_scope(std::move(other._calling_scope)),
-    _called_scope(std::move(other._called_scope))
+      _tasks(std::move(other._tasks))
 {
     memcpy(_name, other._name, 256);
     memset(other._name, 0, 256);
 }
 
-virtual ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
+ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
 {
 }
 
 void ScopedTaskScopeImpl::start()
 {
-    if (_state == ScopeState::IDLE)
-    {
-        _state = ScopeState::EMPTY;
-        _thread = std::thread([&]() {worker(); });
-    }
+    LOG_D("Scope %s Starts", _name);
+    _thread = std::thread([&]() {worker(); });
 }
 void ScopedTaskScopeImpl::stop()
 {
-    if (_state != ScopeState::IDLE)
+    LOG_D("Scope %s Ends", _name);
+    _thread.join();
+}
+void ScopedTaskScopeImpl::clear()
+{
+    LOG_D("Scope %s Clear", _name);
+    bool isLaunched = false;
     {
-        _state = ScopeState::IDLE;
-        _id = std::thread::id();
+        std::unique_lock<std::mutex> lock(_mtx);
+        if (_state != ScopeState::IDLE)
+        {
+            LOG_D("Scope %s is launched", _name);
+            if (_state != ScopeState::EXPIRED)
+                _state = ScopeState::IDLE;
+            _id = std::thread::id();
+            isLaunched = true;
+        }
+    }
+    if (isLaunched)
+    {
         _cv.notify_all();
         _thread.join();
+        LOG_D("Scope %s Ends by Clear", _name);
     }
 }
 
 void ScopedTaskScopeImpl::worker()
 {
     LOG_D("Worker (%s) Start", _name);
+    std::string thread_name = "scope ";
+    thread_name += _name;
+    setThreadName(thread_name.c_str());
+
     _id = std::this_thread::get_id();
-    _cv.notify_all();
+
     for (;;)
     {
         {
             std::unique_lock<std::mutex> lock(_mtx);
             using namespace std::chrono_literals;
+            _current_task.clear();
+
             bool is_timeout = _cv.wait_for(lock, 10s, [&]() {
                 return _state != ScopeState::EMPTY;
                 });
@@ -74,13 +91,13 @@ void ScopedTaskScopeImpl::worker()
                 if (!ret)
                 {
                     LOG_D("Task Runner is not initialized");
-                    return;
+                    _state = ScopeState::EXPIRED;
                 }
-                _cv.wait(lock, [&]() {
-                    return _state == ScopeState::IDLE;
-                    });
+                else
+                    _state = ScopeState::IDLE;
+                _id = std::thread::id();
             }
-            if (_state == ScopeState::IDLE)
+            if (_state == ScopeState::IDLE || _state == ScopeState::EXPIRED)
             {
                 LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name);
                 while (!_tasks.empty())
@@ -95,16 +112,11 @@ void ScopedTaskScopeImpl::worker()
             _state = ScopeState::RUNNING;
             _current_task = std::move(_tasks.front());
             _tasks.pop();
-        }
-        LOG_D("Scope(%s) - Tasks(%s) start", _name, _current_task.name());
-        _current_task.invoke();
-        LOG_D("Scope(%s) - Tasks(%s) ends", _name, _current_task.name());
-        {
-            std::unique_lock<std::mutex> lock(_mtx);
+
             if (_tasks.empty())
             {
                 _state = ScopeState::EMPTY;
-                LOG_D("Scope(%s) - Tasks all executed", _name);
+                LOG_D("Scope(%s) - Tasks empty", _name);
             }
             else
             {
@@ -112,6 +124,10 @@ void ScopedTaskScopeImpl::worker()
                 LOG_D("Scope(%s) - Tasks remained", _name);
             }
         }
+        LOG_D("Scope(%s) - Tasks(%s) start", _name, _current_task.name());
+        _current_task.invoke();
+        LOG_D("Scope(%s) - Tasks(%s) ends", _name, _current_task.name());
+
     }
 }
 
@@ -126,14 +142,19 @@ ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getScope(const char* scope_name,
     {
         return &(iter->second);
     }
-    _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, onStop));
+
+    auto temp_getCurrentScope = [&]() {
+        return getCurrentScope();
+    };
+
+    _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, onStop, temp_getCurrentScope));
     auto& ret = _scopes.at(scope_name);
     return &ret;
 }
 ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getCurrentScope() {
     auto id = std::this_thread::get_id();
     for (auto& iter : _scopes) {
-        if (id == iter.second._id)
+        if (id == iter.second.id())
             return &(iter.second);
     }
     return nullptr;
@@ -142,6 +163,8 @@ void ScopedTaskScopeImplPool::clearScope()
 {
     for (auto& iter : _scopes)
     {
-        iter.second.stop();
+        auto& scope = iter.second;
+        scope.clear();
     }
+    _scopes.clear();
 }

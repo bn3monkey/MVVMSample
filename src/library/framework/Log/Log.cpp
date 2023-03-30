@@ -1,5 +1,7 @@
 #include "Log.hpp"
 
+using namespace Bn3Monkey;
+
 class LogStream
 {
 public :
@@ -63,7 +65,7 @@ const int Bn3Monkey::Log::PRIO_WARN = 3;
 const int Bn3Monkey::Log::PRIO_ERROR = 4;
 #endif
 
-
+std::mutex console_mtx;
 
 void Bn3Monkey::Log::print(int priority, const char* tag, const char* format, va_list args)
 {
@@ -94,7 +96,10 @@ void Bn3Monkey::Log::print(int priority, const char* tag, const char* format, va
 #if defined _WIN32
     OutputDebugStringA(buffer);
 #endif
-    printf(buffer);
+    {
+        std::lock_guard<std::mutex> lock(console_mtx);
+        printf(buffer);
+    }
 
     logStream.read(buffer);
 }

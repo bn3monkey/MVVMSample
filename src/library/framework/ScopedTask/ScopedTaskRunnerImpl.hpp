@@ -1,7 +1,6 @@
 #ifndef __BN3MONKEY_TASK_RUNNER_IMPL__
 #define __BN3MONKEY_TASK_RUNNER_IMPL__
 
-#include "ScopedTaskHelper.hpp"
 #include "ScopedTaskImpl.hpp"
 #include "ScopedTaskScopeImpl.hpp"
 
@@ -13,11 +12,9 @@
 #include <memory>
 #include <chrono>
 #include <vector>
-#include <unorderd_map>
+#include <unordered_map>
 
 #include "../Log/Log.hpp"
-
-#define BN3MONKEY_DEBUG
 
 #ifdef BN3MONKEY_DEBUG
 #define FOR_DEBUG(t) t
@@ -44,18 +41,18 @@ namespace Bn3Monkey
     class ScopedTaskRunnerImpl
     {
     public:
-        bool initialize();
+        bool initialize(std::function<void()> onClear);
         void release();
-        void start(ScopedTaskScopeImpl& task_scope);
-        void stop(ScopedTaskScopeImpl& task_scope);
+        bool start(ScopedTaskScopeImpl& task_scope);
+        bool stop(ScopedTaskScopeImpl& task_scope);
 
     private:
         struct Request {
-            Bn3Monkey::ScopedTaskScopeImpl* scope {nullptr};
+            ScopedTaskScopeImpl* scope {nullptr};
             bool is_activated{false};
             bool* is_done{ nullptr };
             Request() {}
-            Request(Bn3Monkey::ScopedTaskScopeImpl* scope, bool is_activated, bool* is_done) : scope(scope), is_activated(is_activated), is_done(is_done) {}
+            Request(ScopedTaskScopeImpl* scope, bool is_activated, bool* is_done) : scope(scope), is_activated(is_activated), is_done(is_done) {}
         };
 
         std::thread _thread;
@@ -63,8 +60,10 @@ namespace Bn3Monkey
         bool _is_running;
         std::mutex _request_mtx;
         std::condition_variable _request_cv;
-
+        std::function<void()> _onClear;
         void manager();
         
     };
 }
+
+#endif //__BN3MONKEY_TASK_RUNNER_IMPL__ 

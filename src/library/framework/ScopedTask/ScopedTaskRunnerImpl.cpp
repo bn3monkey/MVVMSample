@@ -3,23 +3,30 @@
 
 using namespace Bn3Monkey;
 
-bool ScopedTaskRunnerImpl::initialize()
+bool ScopedTaskRunnerImpl::initialize(std::function<void()> onClear)
 {
     LOG_D("ScopedTaskRunner initializes");
 
-    _is_running = true;
-    _thread = std::thread(manager);
+    _onClear = onClear;
+    {
+        std::unique_lock<std::mutex> lock(_request_mtx);
+        _is_running = true;
+    }
+    _thread = std::thread([&]() {manager(); });
+    return true;
 }
 
 void ScopedTaskRunnerImpl::release()
 {    
     LOG_D("ScopedTaskRunner releases");
-    
-    _is_running = false;
+    {
+        std::unique_lock<std::mutex> lock(_request_mtx);
+        _is_running = false;
+    }
     _request_cv.notify_all();
     _thread.join();
 }
-void ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
+bool ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
 {
     LOG_D("Request manager to start task scope (%s)", task_scope.name());
 
@@ -39,7 +46,7 @@ void ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
     _request_cv.notify_all();
     return true;
 }
-void ScopedTaskRunnerImpl::stop(ScopedTaskScopeImpl& task_scope)
+bool ScopedTaskRunnerImpl::stop(ScopedTaskScopeImpl& task_scope)
 {
     LOG_D("Request manager to stop task scope (%s)", task_scope.name());
     
@@ -110,5 +117,5 @@ void ScopedTaskRunnerImpl::manager()
 
     }    
 
-    Bn3Monkey::ScopedTaskScopeImpl::clearScope();
+    _onClear();
 }

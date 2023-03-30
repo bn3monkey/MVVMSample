@@ -1,63 +1,6 @@
 #include "ScopedTask.hpp"
 #include "ScopedTaskScopeImpl.hpp"
 
-class Fuck
-{
-public:
-    Fuck(int a)
-    {
-        printf("Creaated\n");
-        num = a;
-
-    }
-    Fuck(const Fuck& other)
-    {
-        printf("Copied\n");
-        num = other.num;
-    }
-    Fuck(Fuck&& other)
-    {
-        printf("Moved\n");
-        num = other.num;
-    }
-
-    int num;
-};
-
-
-int func1(int a, int b)
-{
-    printf("func1 : %d %d\n", a, b);
-    return a + b;
-}
-void func2(int a)
-{
-    printf("func2 : %d\n", a);
-}
-void testScopedTask()
-{
-    using namespace Bn3Monkey;
-    ScopedTaskResultImpl<int> r1("result 1");
-    ScopedTaskNotifier<int> p1("result 1", &r1);
-
-    ScopedTaskResultImpl<void> r2("result 2");
-    ScopedTaskNotifier<void> p2("result 2", &r2);
-
-    ScopedTask task1("task1");
-    ScopedTask task2("task2");
-    auto result1 = task1.make(func1, 1, 2);
-    auto result2 = task2.make(func2, 1);
-
-    task1.invoke();
-    auto* ret1 = result1.wait();
-    if (ret1)
-    {
-        printf("test1 result : %d", *ret1);
-    }
-
-    task2.invoke();
-    result2.wait();
-}
 
 struct Request {
     Bn3Monkey::ScopedTaskScopeImpl* scope {nullptr};

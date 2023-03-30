@@ -1,5 +1,5 @@
-#ifndef __SCOPED_TASK_RUNNER__
-#define __SCOPED_TASK_RUNNER__
+#ifndef __BN3MONKEY_SCOPED_TASK__
+#define __BN3MONKEY_SCOPED_TASK__
 
 #include <memory>
 
@@ -24,13 +24,18 @@ namespace Bn3Monkey
         {
             return _impl.wait();
         }
+        ScopedTaskResult(const ScopedTaskResult& other) = delete;
+        ScopedTaskResult(ScopedTaskResult&& other) : _impl(std::move(other._impl))
+        {
+        }
+
     private:
         friend class ScopedTaskScope;
-        ScopedTaskResult(ScopedTaskResultImpl&& impl)
+
+        ScopedTaskResult(ScopedTaskResultImpl<ReturnType>&& impl) : _impl(std::move(impl))
         {
-            _impl = impl;
         }
-        ScopedTaskResultImpl _impl; 
+        ScopedTaskResultImpl<ReturnType> _impl;
     };
 
     class ScopedTaskScope
@@ -45,10 +50,12 @@ namespace Bn3Monkey
         }
 
         template<class Func, class... Args>
-        ScopedTask call(const char* task_name, Func&& func, Args&&... args)
+        auto call(const char* task_name, Func&& func, Args&&... args) -> ScopedTaskResult<std::result_of_t<Func(Args...)>>
         {
             auto _result = _impl.call(task_name, std::forward<Func>(func), std::forward<Args>(args)...);
-            return ScopedTaskResult(_result);
+            
+            //return ScopedTaskResult<std::result_of_t<Func(Args...)>>();
+            return ScopedTaskResult(std::move(_result));
         }
 
     private:
@@ -65,4 +72,4 @@ namespace Bn3Monkey
     };
 }
 
-#endif
+#endif // __BN3MONKEY_SCOPED_TASK__

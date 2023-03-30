@@ -1,1 +1,0 @@
-project(BN3MONKEY_TEST)

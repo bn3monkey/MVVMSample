@@ -1,0 +1,115 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"jsonFile" : "directory-.-RelWithDebInfo-d0094a50bb2071803777.json",
+					"projectIndex" : 0,
+					"source" : "."
+				},
+				{
+					"build" : "library",
+					"jsonFile" : "directory-library-RelWithDebInfo-73c165fbd1f03fdab753.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "library",
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"build" : "test",
+					"jsonFile" : "directory-test-RelWithDebInfo-f18be1977b403cfd1a50.json",
+					"parentIndex" : 0,
+					"projectIndex" : 2,
+					"source" : "test",
+					"targetIndexes" : 
+					[
+						1
+					]
+				}
+			],
+			"name" : "RelWithDebInfo",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1,
+						2
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "MVVMSample"
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "BN3MONKEY_LIBRARY",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						2
+					],
+					"name" : "BN3MONKEY_TEST",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						1
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "bn3monkey_library::@25993c7f548492bbc626",
+					"jsonFile" : "target-bn3monkey_library-RelWithDebInfo-3404b7174f380a8c27fe.json",
+					"name" : "bn3monkey_library",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "bn3monkey_test::@36f028580bb02cc8272a",
+					"jsonFile" : "target-bn3monkey_test-RelWithDebInfo-4136c1b97a4b25f9a361.json",
+					"name" : "bn3monkey_test",
+					"projectIndex" : 2
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "D:/repo/MVVMSample/src/out/build/x64-Release",
+		"source" : "D:/repo/MVVMSample/src"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

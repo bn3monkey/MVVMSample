@@ -13,7 +13,7 @@ inline void setThreadName(const char* name)
     pthread_setname_np(pthread_self(), name);
 #elif _WIN32
     wchar_t buffer[256] = { 0 };
-    size_t size = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
+    int size = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
     MultiByteToWideChar(CP_UTF8, 0, name, -1, buffer, size);
     SetThreadDescription(GetCurrentThread(), buffer);
 #endif
