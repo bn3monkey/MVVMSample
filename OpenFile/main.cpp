@@ -1,6 +1,6 @@
 #include "ScopedTask.hpp"
 #include "ScopedTaskScopeImpl.hpp"
-
+#include <cstdint>
 
 struct Request {
     Bn3Monkey::ScopedTaskScopeImpl* scope {nullptr};
@@ -379,6 +379,7 @@ void testScopedTaskScope()
                 auto* main3_result = main3.wait();
                 return 3;
             }
+            return 0;
         });
         auto* device2_ret = device2.wait();
         return 2;
@@ -403,6 +404,7 @@ void testScopedTaskScope()
                         });
                     return 4;
                 }
+                return 0;
                 });
             auto* ip3_result = ip3.wait();
             return 3;
@@ -456,9 +458,617 @@ void testScopedTaskScope()
     _request_cv.notify_all();
     _thread.join();
 }
+;
+
+constexpr size_t BLOCK_SIZE_POOL[] = { 32, 64, 128, 256, 512, 1024, 4096, 8192 };
+constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t);
+constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
+constexpr size_t HEADER_SIZE = 16;
+
+template<size_t BlockSize>
+struct StaticMemoryBlock
+{
+    constexpr static unsigned int MAGIC_NUMBER = 0xFEDCBA98;
+    struct alignas(HEADER_SIZE) MemoryHeader
+    {
+        const unsigned int dirty = 0xFEDCBA98;
+        bool is_allocated{ false };
+        StaticMemoryBlock<BlockSize>* freed_ptr{nullptr};
+    };
+
+    constexpr static size_t size = BlockSize;
+    constexpr static size_t header_size = HEADER_SIZE;
+    constexpr static size_t content_size = BlockSize - header_size;
+    
+    MemoryHeader header;
+    char content[content_size]{ 0 };
+
+    static StaticMemoryBlock<BlockSize>* getBlockReference(void* ptr)
+    {
+        if ((void *)nullptr <= ptr && ptr < (void*)header_size)
+        {
+            LOG_E("This reference is nullptr");
+            return nullptr;
+        }
+
+        auto* content_ptr = reinterpret_cast<char*>(ptr);
+        auto* block_ptr = content_ptr - header_size;
+        auto* block_casted_ptr = reinterpret_cast<StaticMemoryBlock<BlockSize>*>(block_ptr);
+        if (block_casted_ptr->header.dirty != MAGIC_NUMBER)
+        {
+            LOG_E("This reference cannot be transformed by block");
+            return nullptr;
+        }
+        return block_casted_ptr;
+    }
+};
+
+
+
+template<size_t ObjectSize>
+class StaticMemoryBlockHelper
+{    
+private:    
+    template<size_t ObjectSize_, size_t idx>
+    class Indexer
+    {
+    public:
+        constexpr static size_t find() {
+            return ObjectSize_ <= StaticMemoryBlock<BLOCK_SIZE_POOL[idx]>::content_size ?
+                idx // true
+                :
+                Indexer<ObjectSize_, idx + 1>::find();
+        }
+        
+    };
+
+    template<size_t ObjectSize_>
+    class Indexer<ObjectSize_, BLOCK_SIZE_POOL_LENGTH>
+    {
+    public:
+        constexpr static size_t find() {
+            return BLOCK_SIZE_POOL_LENGTH;
+        }
+    };
+
+public:
+    static size_t idxOfArray(size_t array_size)
+    {
+        size_t whole_size = array_size * ObjectSize;
+        for (size_t idx = 0; idx < BLOCK_SIZE_POOL_LENGTH; idx++)
+        {
+            size_t content_size = BLOCK_SIZE_POOL[idx] - HEADER_SIZE;
+            if (whole_size <= content_size)
+            {
+                return idx;
+            }
+        }
+        return BLOCK_SIZE_POOL_LENGTH;
+    }
+
+    static constexpr size_t idx = Indexer<ObjectSize, 0>::find();
+    static constexpr size_t size = StaticMemoryBlock<BLOCK_SIZE_POOL[idx]>::size;
+    static constexpr size_t content_size = StaticMemoryBlock<BLOCK_SIZE_POOL[idx]>::content_size;
+
+};
+
+class BlockPoolFunction
+{
+public:
+    using Allocator = std::function<void*()>;
+    using Deallocator = std::function<bool(void*)>;
+
+    Allocator allocator;
+    Deallocator deallocator;
+};
+
+template<size_t idx>
+class StaticMemoryBlockPool : public StaticMemoryBlockPool<idx - 1> {
+
+public:
+    constexpr static size_t block_size = BLOCK_SIZE_POOL[idx];
+
+    template<typename Size, typename... Sizes>
+    bool initialize(Size size, Sizes... sizes)
+    {
+        // static_assert(std::is_same<Size, size_t>::value, "Block Pool Size Type must be size_t");
+        blocks.resize(size);
+        
+        front = &blocks.front();
+        back = &blocks.back();
+
+        freed_ptr = front;
+        for (auto* block_ptr = front; block_ptr < back; block_ptr += 1)
+        {
+            block_ptr->header.freed_ptr = block_ptr + 1;
+        }
+        back->header.freed_ptr = nullptr;
+
+        return reinterpret_cast<StaticMemoryBlockPool<idx-1>*>(this)->initialize(std::forward<size_t>(sizes)...);
+    }
+
+    void release()
+    {
+        LOG_D("%s : max_allocated (%llu)", __FUNCTION__, max_allocated);
+        blocks.clear();
+        freed_ptr = nullptr;
+        front = nullptr;
+        back = nullptr;
+
+        reinterpret_cast<StaticMemoryBlockPool<idx - 1>*>(this)->release();
+    }
+
+    void* allocate()
+    {
+        StaticMemoryBlock<block_size>* ret{ nullptr };
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+                       
+
+            if (freed_ptr == nullptr)
+            {
+                LOG_E("Static memory block pool cannot allocate");
+                return nullptr;
+            }
+
+            current_allocated += 1;
+            if (current_allocated > max_allocated)
+                max_allocated = current_allocated;
+            
+
+            ret = freed_ptr;
+            auto* next_freed_ptr = freed_ptr->header.freed_ptr;
+            freed_ptr->header.freed_ptr = nullptr;
+            freed_ptr = next_freed_ptr;
+
+            ret->header.is_allocated = true;
+        }
+        return ret->content;
+    }
+    bool deallocate(void* ptr)
+    {
+        auto* block_ptr = StaticMemoryBlock<block_size>::getBlockReference(ptr);
+        if (block_ptr < front || back < block_ptr)
+        {
+            LOG_E("This reference is not from static memory block pool");
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (block_ptr->header.is_allocated == false)
+            {
+                LOG_E("This reference is already freed");
+                return false;
+            }
+
+            current_allocated -= 1;
+
+            block_ptr->header.is_allocated = false;
+            block_ptr->header.freed_ptr = freed_ptr;
+            freed_ptr = block_ptr;
+
+        }
+        return true;
+    }
+
+    std::vector<StaticMemoryBlock<block_size>> blocks; 
+    StaticMemoryBlock<block_size>* freed_ptr;
+
+    StaticMemoryBlock<block_size>* front;
+    StaticMemoryBlock<block_size>* back;
+
+    size_t max_allocated{0};
+    size_t current_allocated{ 0 };
+    std::mutex mutex;
+
+};
+
+template<>
+class StaticMemoryBlockPool<0>
+{
+public:
+    constexpr static size_t block_size = BLOCK_SIZE_POOL[0];
+
+    template<typename Size, typename... Sizes>
+    bool initialize(Size size, Sizes... sizes)
+    {
+        // static_assert(std::is_same<Size, size_t>::value, "Block Pool Size Type must be size_t");
+        blocks.resize(size);
+
+        front = &blocks.front();
+        back = &blocks.back();
+
+        freed_ptr = front;
+        for (auto* block_ptr = front; block_ptr < back; block_ptr += 1)
+        {
+            block_ptr->header.freed_ptr = block_ptr + 1;
+        }
+        back->header.freed_ptr = nullptr;
+
+        return true;
+    }
+    void release()
+    {
+        LOG_D("%s : max_allocated (%llu)\n", __FUNCTION__, max_allocated);
+        blocks.clear();
+        freed_ptr = nullptr;
+        front = nullptr;
+        back = nullptr;
+    }
+
+    void* allocate()
+    {
+        StaticMemoryBlock<block_size>* ret{ nullptr };
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+
+
+            if (freed_ptr == nullptr)
+            {
+                LOG_E("Static memory block pool cannot allocate");
+                return nullptr;
+            }
+
+            current_allocated += 1;
+            if (current_allocated > max_allocated)
+                max_allocated = current_allocated;
+
+
+            ret = freed_ptr;
+            auto* next_freed_ptr = freed_ptr->header.freed_ptr;
+            freed_ptr->header.freed_ptr = nullptr;
+            freed_ptr = next_freed_ptr;
+
+            ret->header.is_allocated = true;
+        }
+        return ret->content;
+    }
+    bool deallocate(void* ptr)
+    {
+        auto* block_ptr = StaticMemoryBlock<block_size>::getBlockReference(ptr);
+        if (block_ptr < front || back < block_ptr)
+        {
+            LOG_E("This reference is not from static memory block pool");
+            return false;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (block_ptr->header.is_allocated == false)
+            {
+                LOG_E("This reference is already freed");
+                return false;
+            }
+
+            current_allocated -= 1;
+
+            block_ptr->header.is_allocated = false;
+            block_ptr->header.freed_ptr = freed_ptr;
+            freed_ptr = block_ptr;
+
+        }
+        return true;
+    }
+
+    std::vector<StaticMemoryBlock<block_size>> blocks;
+    StaticMemoryBlock<block_size>* freed_ptr;
+
+    StaticMemoryBlock<block_size>* front;
+    StaticMemoryBlock<block_size>* back;
+
+    size_t max_allocated{ 0 };
+    size_t current_allocated{ 0 };
+    std::mutex mutex;
+};
+
+template<size_t pool_size>
+class StaticMemoryBlockPools : public StaticMemoryBlockPool<pool_size-1>
+{
+public:
+    static_assert(pool_size <= BLOCK_SIZE_POOL_LENGTH, "Static Memory Block Pools Size is invalid");
+    constexpr static size_t max_pool_num = pool_size - 1;
+
+    StaticMemoryBlockPools()
+    {
+        setFunction<pool_size - 1>();
+    }
+
+    BlockPoolFunction::Allocator allocators[pool_size];
+    BlockPoolFunction::Deallocator deallocators[pool_size];
+
+    template<size_t size>
+    void setFunction()
+    {
+        setFunction<size - 1>();
+        allocators[size] = [&]() {
+            return reinterpret_cast<StaticMemoryBlockPool<size>*>(this)->allocate();
+        };
+        deallocators[size] = [&](void* ptr) {
+            return reinterpret_cast<StaticMemoryBlockPool<size>*>(this)->deallocate(ptr);
+        };
+    }
+    template<>
+    void setFunction<0>() {
+        allocators[0] = [&]() {
+            return reinterpret_cast<StaticMemoryBlockPool<0>*>(this)->allocate();
+        };
+        deallocators[0] = [&](void* ptr) {
+            return reinterpret_cast<StaticMemoryBlockPool<0>*>(this)->deallocate(ptr);
+        };
+    }
+
+
+    template<typename... Sizes>
+    bool initialize(Sizes... sizes)
+    {
+        return reinterpret_cast<StaticMemoryBlockPool<max_pool_num>*>(this)->initialize(std::forward<size_t>(sizes)...);
+    }
+    void release()
+    {
+        reinterpret_cast<StaticMemoryBlockPool<max_pool_num>*>(this)->release();
+    }
+
+    template<class Type, size_t size>
+    Type* allocate_static()
+    {
+        constexpr size_t object_size = sizeof(Type) * size;
+        constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        auto* ret = reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->allocate();
+        return reinterpret_cast<Type*>(ret);
+    }
+
+    template<size_t size, class Type>
+    bool deallocate_static(Type* reference)
+    {
+        constexpr size_t object_size = sizeof(Type) * size;
+        constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        return reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->deallocate(reference);
+    }
+
+    template<class Type>
+    Type* allocate(size_t size)
+    {
+        constexpr size_t object_size = sizeof(Type);
+        size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
+        auto* ret = allocators[idx]();
+        return reinterpret_cast<Type*>(ret);
+    }
+
+    template<class Type>
+    bool deallocate(Type* reference, size_t size)
+    {
+        constexpr size_t object_size = sizeof(Type);
+        size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
+        bool ret = deallocators[idx](reference);
+        return ret;
+    }
+};
+
 
 void main()
 {
-    testScopedTaskScope();
+    // testScopedTaskScope();
+
+    StaticMemoryBlockPools<8> pools;
+    pools.initialize(16, 16, 16, 16, 16, 16, 16, 16);
+
+    /*
+    auto* a = pools.allocate_static<int, 1>();
+    pools.deallocate_static<1>(a);
+    
+    auto* b = pools.allocate_static<int, 255>();
+    pools.deallocate_static<2>(b);
+    
+    auto* c = pools.allocate_static<std::function<void()>, 3>();
+    pools.deallocate_static<3>(c);
+    */
+    auto* a = pools.allocate<int>(1);
+    pools.deallocate(a, 1);
+
+    auto* b = pools.allocate<int>(255);
+    pools.deallocate(b, 255);
+
+    auto* c = pools.allocate<std::function<void(int, int ,int)>>(3);
+
+    c[0] = [&](int a, int b, int c) {
+        printf("%d\n", a + b + c);
+    };
+    c[1] = [&](int a, int b, int c) {
+        printf("%d\n", 2*a + b + c);
+    };
+    c[2] = [&](int a, int b, int c) {
+        printf("%d\n", a + 3*b + c);
+    };
+
+    c[0](3, 5, 2);
+    c[1](2, 3, 4);
+    c[2](5, 1, 2);
+
+    pools.deallocate(c, 3);
+    
+
+    pools.release();
+
+    /*
+    StaticMemoryBlock<32> block;
+    StaticMemoryBlock<64> block2;
+    StaticMemoryBlock<128> block3;
+
+    size_t size = StaticMemoryBlock<32>::size;
+    size_t size2 = StaticMemoryBlock<64>::size;
+    size_t size3 = StaticMemoryBlock<128>::size;
+
+    printf("%d %d %d\n", size, size2, size3);
+
+    size_t content_size = StaticMemoryBlock<BLOCK_SIZE_POOL[0]>::size;
+    size_t content_size2 = StaticMemoryBlock<BLOCK_SIZE_POOL[1]>::size;
+
+    printf("%d %d\n", content_size, content_size2);
+
+
+    {
+        size_t idx1 = StaticMemoryBlockHelper<10>::idx;
+        size_t idx2 = StaticMemoryBlockHelper<50>::idx;
+        size_t idx3 = StaticMemoryBlockHelper<70>::idx;
+
+        {
+            size_t a = StaticMemoryBlockHelper<10>::size;
+            size_t b = StaticMemoryBlockHelper<50>::size;
+            size_t c = StaticMemoryBlockHelper<70>::size;
+        }
+
+        // size_t idx1 = getIdx<28>();
+        // size_t idx2 = getIdx<43>();
+        // size_t idx3 = getIdx<125>();
+
+        printf("%d %d %d\n", idx1, idx2, idx3);
+    }
+    
+    
+
+    if (true)
+    {
+        StaticMemoryBlockPool<0> blockpool;
+        blockpool.initialize(4);
+
+        auto* ret1 = blockpool.allocate();
+        auto* ret2 = blockpool.allocate();
+        auto* ret3 = blockpool.allocate();
+        auto* ret4 = blockpool.allocate();
+        auto* ret5 = blockpool.allocate();
+
+        blockpool.deallocate(ret4);
+        blockpool.deallocate(ret1);
+        blockpool.deallocate(ret3);
+        blockpool.deallocate(ret2);
+
+        ret5 = blockpool.allocate();
+        blockpool.deallocate(ret5);
+
+        blockpool.release();
+    }
+
+    if (true)
+    {
+        StaticMemoryBlockPool<0> blockpool;
+        blockpool.initialize(4);
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            blockpool.deallocate(ret2);
+            blockpool.deallocate(ret1);
+        }
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            auto* ret3 = blockpool.allocate();
+            blockpool.deallocate(ret2);
+            blockpool.deallocate(ret1);
+        }
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            auto* ret3 = blockpool.allocate();
+            auto* ret4 = blockpool.allocate();
+            blockpool.deallocate(ret3);
+            blockpool.deallocate(ret1);
+            blockpool.deallocate(ret2);
+        }
+
+        blockpool.release();
+    }
+
+    if (true)
+    {
+        StaticMemoryBlockPool<1> blockpool;
+        blockpool.initialize(4, 4);
+
+        auto* ret1 = blockpool.allocate();
+        auto* ret2 = blockpool.allocate();
+        auto* ret3 = blockpool.allocate();
+        auto* ret4 = blockpool.allocate();
+        auto* ret5 = blockpool.allocate();
+
+        blockpool.deallocate(ret4);
+        blockpool.deallocate(ret1);
+        blockpool.deallocate(ret3);
+        blockpool.deallocate(ret2);
+
+        ret5 = blockpool.allocate();
+        blockpool.deallocate(ret5);
+
+        blockpool.release();
+    }
+
+    if (true)
+    {
+        StaticMemoryBlockPool<1> blockpool;
+        blockpool.initialize(4, 4);
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            blockpool.deallocate(ret2);
+            blockpool.deallocate(ret1);
+        }
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            auto* ret3 = blockpool.allocate();
+            blockpool.deallocate(ret2);
+            blockpool.deallocate(ret1);
+        }
+
+        {
+            auto* ret1 = blockpool.allocate();
+            auto* ret2 = blockpool.allocate();
+            auto* ret3 = blockpool.allocate();
+            auto* ret4 = blockpool.allocate();
+            blockpool.deallocate(ret3);
+            blockpool.deallocate(ret1);
+            blockpool.deallocate(ret2);
+        }
+
+        blockpool.release();
+    }
+
+    if (true)
+    {
+        StaticMemoryBlockPool<1> blockpool;
+        blockpool.initialize(5, 5);
+
+        auto* ret1 = blockpool.allocate();
+        blockpool.deallocate(ret1);
+        blockpool.deallocate(ret1);
+
+        ret1 = blockpool.allocate();
+        auto* ret2 = blockpool.allocate();
+        auto* ret3 = blockpool.allocate();
+        auto* ret4 = blockpool.allocate();
+
+        blockpool.deallocate(ret3);
+        blockpool.deallocate(ret3);
+
+        auto* sans = new int();
+        blockpool.deallocate(sans);
+
+        blockpool.deallocate(nullptr);
+
+        blockpool.deallocate((void *)4);
+    }
+    */
+
+
+
+    // StaticMemoryBlockPools<8> memorypools{};
+    // memorypools.initialize(512u, 512u, 512u, 512u, 512u, 512u, 512u, 512u);
+    printf("sans\n");
+
+    // MemoryBlockHelper<28> helper;
+    // MemoryBlockHelper<52> helper;
+
     return;
 }

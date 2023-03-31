@@ -11,6 +11,7 @@ namespace Bn3Monkey
 	class Bn3MemoryPool
 	{
 	public:
+		
 		// constexpr static size_t HEADER_SIZE = 32;
 		constexpr static size_t BLOCK_SIZE_POOL[] = { 32, 64, 128, 256, 512, 1024, 4096, 8192 };
 		constexpr static size_t BLOCK_SIZE_POOL_SIZE = sizeof(BLOCK_SIZE_POOL)/sizeof(size_t);
