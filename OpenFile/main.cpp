@@ -460,10 +460,12 @@ void testScopedTaskScope()
 }
 ;
 
-constexpr size_t BLOCK_SIZE_POOL[] = { 32, 64, 128, 256, 512, 1024, 4096, 8192 };
-constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t);
+constexpr size_t BLOCK_SIZE_POOL[] = { 32, 64, 128, 256, 512, 1024, 4096, 8192, 8192};
+constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
 constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
 constexpr size_t HEADER_SIZE = 16;
+
+
 
 template<size_t BlockSize>
 struct StaticMemoryBlock
@@ -502,8 +504,6 @@ struct StaticMemoryBlock
         return block_casted_ptr;
     }
 };
-
-
 
 template<size_t ObjectSize>
 class StaticMemoryBlockHelper
@@ -552,21 +552,10 @@ public:
 
 };
 
-class BlockPoolFunction
-{
-public:
-    using Allocator = std::function<void*()>;
-    using Deallocator = std::function<bool(void*)>;
-
-    Allocator allocator;
-    Deallocator deallocator;
-};
-
 template<size_t idx>
 class StaticMemoryBlockPool : public StaticMemoryBlockPool<idx - 1> {
 
 public:
-    constexpr static size_t block_size = BLOCK_SIZE_POOL[idx];
 
     template<typename Size, typename... Sizes>
     bool initialize(Size size, Sizes... sizes)
@@ -651,6 +640,9 @@ public:
         return true;
     }
 
+private:
+    constexpr static size_t block_size = BLOCK_SIZE_POOL[idx];
+
     std::vector<StaticMemoryBlock<block_size>> blocks; 
     StaticMemoryBlock<block_size>* freed_ptr;
 
@@ -663,11 +655,11 @@ public:
 
 };
 
+
 template<>
 class StaticMemoryBlockPool<0>
 {
 public:
-    constexpr static size_t block_size = BLOCK_SIZE_POOL[0];
 
     template<typename Size, typename... Sizes>
     bool initialize(Size size, Sizes... sizes)
@@ -749,6 +741,10 @@ public:
         return true;
     }
 
+private:
+
+    constexpr static size_t block_size = BLOCK_SIZE_POOL[0];
+
     std::vector<StaticMemoryBlock<block_size>> blocks;
     StaticMemoryBlock<block_size>* freed_ptr;
 
@@ -772,8 +768,6 @@ public:
         setFunction<pool_size - 1>();
     }
 
-    BlockPoolFunction::Allocator allocators[pool_size];
-    BlockPoolFunction::Deallocator deallocators[pool_size];
 
     template<size_t size>
     void setFunction()
@@ -807,28 +801,41 @@ public:
         reinterpret_cast<StaticMemoryBlockPool<max_pool_num>*>(this)->release();
     }
 
-    template<class Type, size_t size>
-    Type* allocate_static()
+    template<class Type>
+    Type* allocate()
     {
-        constexpr size_t object_size = sizeof(Type) * size;
+        constexpr size_t object_size = sizeof(Type);
         constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        if (idx >= pool_size)
+            return new Type();
         auto* ret = reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->allocate();
         return reinterpret_cast<Type*>(ret);
     }
 
-    template<size_t size, class Type>
-    bool deallocate_static(Type* reference)
+    template<class Type>
+    bool deallocate(Type* reference)
     {
-        constexpr size_t object_size = sizeof(Type) * size;
+        constexpr size_t object_size = sizeof(Type);
         constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        if (idx >= pool_size)
+        {
+            delete reference;
+            return true;
+        }
         return reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->deallocate(reference);
     }
 
     template<class Type>
     Type* allocate(size_t size)
     {
+        if (size == 1)
+            return allocate<Type>();
         constexpr size_t object_size = sizeof(Type);
         size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
+        if (idx >= pool_size)
+        {
+            return new Type[size];
+        }
         auto* ret = allocators[idx]();
         return reinterpret_cast<Type*>(ret);
     }
@@ -836,11 +843,21 @@ public:
     template<class Type>
     bool deallocate(Type* reference, size_t size)
     {
+        if (size == 1)
+            return deallocate(reference);
         constexpr size_t object_size = sizeof(Type);
         size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
+        if (idx >= pool_size)
+        {
+            delete[] reference;
+            return true;
+        }
         bool ret = deallocators[idx](reference);
         return ret;
     }
+private:
+    std::function<void* ()> allocators[pool_size];
+    std::function<bool(void*)> deallocators[pool_size];
 };
 
 
@@ -851,21 +868,27 @@ void main()
     StaticMemoryBlockPools<8> pools;
     pools.initialize(16, 16, 16, 16, 16, 16, 16, 16);
 
-    /*
-    auto* a = pools.allocate_static<int, 1>();
-    pools.deallocate_static<1>(a);
-    
-    auto* b = pools.allocate_static<int, 255>();
-    pools.deallocate_static<2>(b);
-    
-    auto* c = pools.allocate_static<std::function<void()>, 3>();
-    pools.deallocate_static<3>(c);
-    */
     auto* a = pools.allocate<int>(1);
     pools.deallocate(a, 1);
 
+    auto* a2 = pools.allocate<int>(3);
+    pools.deallocate(a, 3);
+
     auto* b = pools.allocate<int>(255);
     pools.deallocate(b, 255);
+
+    class SANS
+    {
+        char tt[9000];
+    };
+
+    auto* d = pools.allocate<SANS>();
+    pools.deallocate(d);
+
+    auto* e = pools.allocate<SANS>(3);
+    pools.deallocate<SANS>(e, 3);
+
+
 
     auto* c = pools.allocate<std::function<void(int, int ,int)>>(3);
 
