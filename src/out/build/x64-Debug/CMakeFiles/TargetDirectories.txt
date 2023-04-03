@@ -1,8 +1,0 @@
-D:/repo/MVVMSample/src/out/build/x64-Debug/CMakeFiles/edit_cache.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/CMakeFiles/rebuild_cache.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/library/CMakeFiles/bn3monkey_library.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/library/CMakeFiles/edit_cache.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/library/CMakeFiles/rebuild_cache.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/test/CMakeFiles/bn3monkey_test.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/test/CMakeFiles/edit_cache.dir
-D:/repo/MVVMSample/src/out/build/x64-Debug/test/CMakeFiles/rebuild_cache.dir

@@ -88,7 +88,7 @@ namespace Bn3Monkey
         }
 
         template<class Func, class... Args>
-        auto call(const char* task_name, Func&& func, Args&&... args) -> ScopedTaskResultImpl<std::result_of_t<Func(Args...)>>
+        auto call(const char* task_name, Func&& func, Args&&... args) -> std::shared_ptr<ScopedTaskResultImpl<std::result_of_t<Func(Args...)>>>
         {
             // ScopeTask 수행 요청하기
             ScopedTask task{ task_name };
@@ -135,7 +135,7 @@ namespace Bn3Monkey
                 }
                 else
                 {
-                    ret.invalidate();
+                    ret->cancel();
                 }
             }
 

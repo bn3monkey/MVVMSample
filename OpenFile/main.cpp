@@ -801,16 +801,40 @@ public:
         reinterpret_cast<StaticMemoryBlockPool<max_pool_num>*>(this)->release();
     }
 
-    template<class Type>
-    Type* allocate()
+    template<class Type, class... Args>
+    Type* allocate_and_initialize(Args... args)
     {
         constexpr size_t object_size = sizeof(Type);
         constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        Type* ret = nullptr;
+
         if (idx >= pool_size)
-            return new Type();
-        auto* ret = reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->allocate();
-        return reinterpret_cast<Type*>(ret);
+        {
+            ret = new Type(std::forward<Args>(args)...);
+            return ret;
+        }
+        auto* ptr = reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->allocate();
+        ret = new (ptr) Type(std::forward<Args>(args)...);
+        return ret;
     }
+
+    template<class Type>
+    Type* allocate_and_initialize()
+    {
+        constexpr size_t object_size = sizeof(Type);
+        constexpr size_t idx = StaticMemoryBlockHelper<object_size>::idx;
+        Type* ret = nullptr;
+
+        if (idx >= pool_size)
+        {
+            ret = new Type();
+            return ret;
+        }
+        auto* ptr = reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->allocate();
+        ret = new (ptr) Type();
+        return ret;
+    }
+
 
     template<class Type>
     bool deallocate(Type* reference)
@@ -822,6 +846,8 @@ public:
             delete reference;
             return true;
         }
+        
+        reference->~Type();
         return reinterpret_cast<StaticMemoryBlockPool<idx>*>(this)->deallocate(reference);
     }
 
@@ -829,22 +855,25 @@ public:
     Type* allocate(size_t size)
     {
         if (size == 1)
-            return allocate<Type>();
+            return allocate_and_initialize<Type>();
+        
         constexpr size_t object_size = sizeof(Type);
         size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
         if (idx >= pool_size)
         {
             return new Type[size];
         }
-        auto* ret = allocators[idx]();
-        return reinterpret_cast<Type*>(ret);
+        auto* ptr = allocators[idx]();
+        return reinterpret_cast<Type*>(ptr);
     }
+
 
     template<class Type>
     bool deallocate(Type* reference, size_t size)
     {
         if (size == 1)
             return deallocate(reference);
+
         constexpr size_t object_size = sizeof(Type);
         size_t idx = StaticMemoryBlockHelper<object_size>::idxOfArray(size);
         if (idx >= pool_size)
@@ -852,6 +881,7 @@ public:
             delete[] reference;
             return true;
         }
+
         bool ret = deallocators[idx](reference);
         return ret;
     }
@@ -861,14 +891,14 @@ private:
 };
 
 
-void main()
+int main()
 {
     // testScopedTaskScope();
 
     StaticMemoryBlockPools<8> pools;
     pools.initialize(16, 16, 16, 16, 16, 16, 16, 16);
 
-    auto* a = pools.allocate<int>(1);
+    auto* a = pools.allocate <int>(1);
     pools.deallocate(a, 1);
 
     auto* a2 = pools.allocate<int>(3);
@@ -877,12 +907,13 @@ void main()
     auto* b = pools.allocate<int>(255);
     pools.deallocate(b, 255);
 
-    class SANS
+    struct SANS
     {
+    public:
         char tt[9000];
     };
 
-    auto* d = pools.allocate<SANS>();
+    auto* d = pools.allocate_and_initialize<SANS>();
     pools.deallocate(d);
 
     auto* e = pools.allocate<SANS>(3);
@@ -908,6 +939,47 @@ void main()
 
     pools.deallocate(c, 3);
     
+    class Papyrus
+    {
+    public:
+        Papyrus(){}
+        Papyrus(int a, int b, int c) : a(a), b(b), c(c)
+        {
+            printf("Papyrus created\n");
+        }
+
+        virtual ~Papyrus()
+        {
+            printf("Papyrus released\n");
+        }
+
+        int a, b, c;
+    };
+
+    class BigPapyrus
+    {
+    public:
+        BigPapyrus() {}
+        BigPapyrus(int a)
+        {
+            for (int i = 0; i < 2000; i++)
+                a_array[i] = a;
+            printf("Bigpyrus created\n");
+        }
+        virtual ~BigPapyrus()
+        {
+            memset(a_array, 0, 2000 * sizeof(int));
+            printf("Bigpyrus released\n");
+        }
+
+        int a_array[3000];
+    };
+
+    auto* f = pools.allocate_and_initialize<Papyrus>(3, 4, 5);
+    pools.deallocate(f);
+
+    auto* g = pools.allocate_and_initialize<BigPapyrus>(5);
+    pools.deallocate(g);
 
     pools.release();
 
@@ -1093,5 +1165,5 @@ void main()
     // MemoryBlockHelper<28> helper;
     // MemoryBlockHelper<52> helper;
 
-    return;
+    return 0;
 }

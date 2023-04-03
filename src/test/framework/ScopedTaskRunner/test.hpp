@@ -1,5 +1,5 @@
 #include <ScopedTask/ScopedTask.hpp>
-#include "test_helper.hpp"
+#include "../test_helper.hpp"
 
 using namespace std::chrono_literals;
 void test_run(bool value)
@@ -8,6 +8,8 @@ void test_run(bool value)
 		return;
 
 	using namespace Bn3Monkey;
+
+	say("RUN TEST");
 
 	ScopedTaskRunner().initialize();
 
@@ -93,6 +95,8 @@ void test_runCancelled(bool value)
 	if (!value)
 		return;
 
+	say("CANCEL TEST");
+
 	using namespace Bn3Monkey;
 
 	for (unsigned long long value = 0; value < 20; value++)
@@ -152,6 +156,8 @@ void test_call(bool value)
 {
 	if (!value)
 		return;
+
+	say("CALL TEST");
 
 	using namespace Bn3Monkey;
 
@@ -293,7 +299,14 @@ void test_call(bool value)
 
 void testScopedTaskRunner()
 {
-	test_run(false);
-	test_runCancelled(false);
-	test_call(true);
+
+	Bn3Monkey::Bn3MemoryPool::initialize(32, 32, 32, 32, 32, 32, 32, 32);
+
+	for (size_t i = 0; i < 100; i++)
+	{
+		test_run(true);
+		test_runCancelled(true);
+		test_call(false);
+	}
+	Bn3Monkey::Bn3MemoryPool::release();
 }

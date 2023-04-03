@@ -22,7 +22,7 @@ namespace Bn3Monkey
     public: 
         ReturnType* wait()
         {
-            return _impl.wait();
+            return _impl->wait();
         }
         ScopedTaskResult(const ScopedTaskResult& other) = delete;
         ScopedTaskResult(ScopedTaskResult&& other) : _impl(std::move(other._impl))
@@ -32,10 +32,10 @@ namespace Bn3Monkey
     private:
         friend class ScopedTaskScope;
 
-        ScopedTaskResult(ScopedTaskResultImpl<ReturnType>&& impl) : _impl(std::move(impl))
+        ScopedTaskResult(std::shared_ptr<ScopedTaskResultImpl<ReturnType>> impl) : _impl(std::move(impl))
         {
         }
-        ScopedTaskResultImpl<ReturnType> _impl;
+        std::shared_ptr<ScopedTaskResultImpl<ReturnType>> _impl;
     };
 
     class ScopedTaskScope
