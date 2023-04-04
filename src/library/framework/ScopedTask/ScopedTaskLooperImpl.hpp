@@ -18,10 +18,11 @@ namespace Bn3Monkey
 	{
 	public:
 		ScopedTaskLooperImpl(
-			const Bn3Tag& tag, 
-			const ScopedTaskScopeImpl& scope, 
+			const Bn3Tag& tag,
+			const ScopedTaskScopeImpl& scope,
 			std::function<void()> task,
-			std::function<ScopedTaskLooperImpl&>);
+			std::function<void(ScopedTaskLooperImpl&)> onAdd,
+			std::function<void(ScopedTaskLooperImpl&)> onRemove);
 		ScopedTaskLooperImpl(const ScopedTaskLooperImpl& other) = delete;
 		ScopedTaskLooperImpl(ScopedTaskLooperImpl&& other);
 
@@ -37,8 +38,11 @@ namespace Bn3Monkey
 
 		std::chrono::duration<long long, std::chrono::microseconds> _interval;
 
+		std::function<void(ScopedTaskLooperImpl&)> _onAdd;
+		std::function<void(ScopedTaskLooperImpl&)> _onRemove;
+
 		friend class ScopedTaskLooperScheduler;
-	}
+	};
 
 	class ScopedTaskLooperScheduler
 	{
@@ -52,6 +56,14 @@ namespace Bn3Monkey
 			return _onStop;
 		}
 
+		inline std::function<void(ScopedTaskLooperImpl&)>& onAdd() {
+			return _onAdd;
+		}
+
+		inline std::function<void(ScopedTaskLooperImpl&)>& onRemove() {
+			return _onRemove;
+		}
+
 		ScopedTaskLooperImpl& getLooper(const Bn3Tag& tag, const ScopedTaskScopeImpl& scope, std::function<void()> task);
 
 	private:
@@ -59,11 +71,16 @@ namespace Bn3Monkey
 		void stop();
 		void routine();
 
+		void add(ScopedTaskLooperImpl& looper);
+		void remove(ScopedTaskLooperImpl& looper);
+
 		std::function<void()> _onStart;
 		std::function<void()> _onStop;
+		std::function<void(ScopedTaskLooperImpl&)> _onAdd;
+		std::function<void(ScopedTaskLooperImpl&)> _onRemove;
 
-		std::vector<ScopedTask> 
-		std::vector<ScopedTask&>
+		std::vector<ScopedTask> _loopers;
+		std::vector<ScopedTask&> _activated_loopers;
 
 		bool _is_running;
 		std::mutex _mtx;

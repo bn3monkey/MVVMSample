@@ -3,3 +3,5 @@
 src/library/.vs/
 src/library/out/
 src/out/
+src/test/.vs
+src/test/out/
