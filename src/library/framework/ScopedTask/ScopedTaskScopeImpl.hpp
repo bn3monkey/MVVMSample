@@ -42,8 +42,7 @@ namespace Bn3Monkey
         IDLE = 0, // 할당된 작업 없으면 쓰레드도 동작하지 않음
         EMPTY = 1, // 할당된 작업 없음
         READY = 2, // 할당된 작업 있음
-        RUNNING = 3, // 작업 중임
-        EXPIRED = 4, 
+        // RUNNING = 3, // 작업 중임
     };
 
     class ScopedTaskScopeImpl
@@ -52,7 +51,6 @@ namespace Bn3Monkey
 
         ScopedTaskScopeImpl(const char* scope_name,
             std::function<bool(ScopedTaskScopeImpl&)> onStart,
-            std::function<bool(ScopedTaskScopeImpl&)> onStop,
             std::function<ScopedTaskScopeImpl*()> getCurrentScope);
 
         ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other);
@@ -61,11 +59,11 @@ namespace Bn3Monkey
        
 
         void start();
+        void timeout();
         void stop();
-        void clear();
 
         template<class Func, class... Args>
-        void run(const char* task_name, Func&& func, Args&&... args)
+        void run(const Bn3Tag& task_name, Func&& func, Args&&... args)
         {
             // Scope가 꺼져있으면 스코프 키기
             // 자기 자신 Scope에서 불렀으면 무조건 ScopeState는 Running
@@ -75,7 +73,7 @@ namespace Bn3Monkey
             ScopedTask task{ task_name };
             task.make(std::forward<Func>(func), std::forward<Args>(args)...);
 
-            LOG_D("Make task (%s)", task_name);
+            LOG_D("Make task (%s)", task_name.str());
 
             {
                 std::unique_lock<std::mutex> lock(_mtx);
@@ -83,24 +81,24 @@ namespace Bn3Monkey
                     pushToScope(std::move(task));
             }
 
-            LOG_D("Run Task (%s)", _name);
+            LOG_D("Run Task (%s)", task_name.str());
             _cv.notify_all();
         }
 
         template<class Func, class... Args>
-        auto call(const char* task_name, Func&& func, Args&&... args) -> std::shared_ptr<ScopedTaskResultImpl<std::result_of_t<Func(Args...)>>>
+        auto call(const Bn3Tag& task_name, Func&& func, Args&&... args) -> std::shared_ptr<ScopedTaskResultImpl<std::result_of_t<Func(Args...)>>>
         {
             // ScopeTask 수행 요청하기
             ScopedTask task{ task_name };
             auto ret = task.make(std::forward<Func>(func), std::forward<Args>(args)...);
 
-            LOG_D("Make task (%s)", task_name);
+            LOG_D("Make task (%s)", task_name.str());
 
             // 현재 스코프와 호출한 스코프가 같은 경우 바로 실행하기
             auto* current_scope = _getCurrentScope();
             if (compare(current_scope))
             {
-                LOG_D("Call task (%s) in current scope", task_name);
+                LOG_D("Call task (%s) in current scope", task_name.str());
                 task.invoke();
                 return ret;
             }
@@ -122,7 +120,7 @@ namespace Bn3Monkey
                 auto* current_scope_name = current_scope->_name;
                 if (!task.addStack(current_task, current_scope_name))
                 {
-                    LOG_E("This Task cannot be added to scope %s", current_scope_name);
+                    LOG_E("This Task cannot be added to scope (%s)", current_scope_name);
                     assert(false);
                 }
             }
@@ -139,7 +137,7 @@ namespace Bn3Monkey
                 }
             }
 
-            LOG_D("Call Task (%s)", _name);
+            LOG_D("Call Task (%s)", task_name.str());
             _cv.notify_all();
             return ret;
         }
@@ -153,14 +151,16 @@ namespace Bn3Monkey
             if (ScopeState::IDLE == _state)
             {
                 LOG_D("Task %s starts scope (%s)", task.name(), _name);
-                _state = ScopeState::EMPTY;
-                bool ret = _onStart(*this);
-                if (!ret)
+                if (!_onStart(*this))
                 {
-                    LOG_D("Task Runner is not initialized");
-                    _state = ScopeState::IDLE;
+                    LOG_D("Request manager is stopped.\n");
                     return false;
                 }
+                std::mutex local_mtx;
+                std::unique_lock<std::mutex> lock(local_mtx);
+                _cv.wait(lock, [&]() {
+                    return ScopeState::EMPTY == _state;
+                    });
             }
             return true;
         }
@@ -183,9 +183,8 @@ namespace Bn3Monkey
 
         char _name[256]{ 0 };
 
-        std::function<bool(ScopedTaskScopeImpl&)> _onStart;
-        std::function<bool(ScopedTaskScopeImpl&)> _onStop;
         std::function<ScopedTaskScopeImpl*()> _getCurrentScope;
+        std::function<bool(ScopedTaskScopeImpl&)> _onStart;
 
         std::thread _thread;
         std::thread::id _id;
@@ -201,16 +200,23 @@ namespace Bn3Monkey
     class ScopedTaskScopeImplPool
     {
     public:
-        ScopedTaskScopeImpl* getScope(const char* scope_name,
-            std::function<bool(ScopedTaskScopeImpl&)> onStart,
-            std::function<bool(ScopedTaskScopeImpl&)> onStop);
+        ScopedTaskScopeImplPool();
+        ScopedTaskScopeImpl* getScope(const char* scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart);
         ScopedTaskScopeImpl* getCurrentScope();
-        void clearScope();
-        void clear() {
-            _scopes.clear();
+        
+        inline std::function<void()>& onTimeout() {
+            return _onTimeout;
+        }
+        inline std::function<void()>& onClear() {
+            return _onClear;
         }
 
     private:
+        void timeout();
+        void clear();
+
+        std::function<void()> _onTimeout;
+        std::function<void()> _onClear;
         std::unordered_map<std::string, ScopedTaskScopeImpl> _scopes;
     };
 }

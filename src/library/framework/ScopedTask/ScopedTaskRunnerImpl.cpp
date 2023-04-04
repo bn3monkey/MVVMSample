@@ -3,11 +3,16 @@
 
 using namespace Bn3Monkey;
 
-bool ScopedTaskRunnerImpl::initialize(std::function<void()> onClear)
+bool ScopedTaskRunnerImpl::initialize(std::function<void()> onTimeout, std::function<void()> onStop)
 {
     LOG_D("ScopedTaskRunner initializes");
 
-    _onClear = onClear;
+    _onStart = [&](ScopedTaskScopeImpl& task_scope) {
+        return start(task_scope);
+    };
+    _onTimeout = onTimeout;
+    _onStop = onStop;
+    
     {
         std::unique_lock<std::mutex> lock(_request_mtx);
         _is_running = true;
@@ -30,8 +35,6 @@ bool ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
 {
     LOG_D("Request manager to start task scope (%s)", task_scope.name());
 
-    bool is_done {false};
-
     {
         std::unique_lock<std::mutex> lock(_request_mtx);
         if (!_is_running)
@@ -40,31 +43,10 @@ bool ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
             return false;
         }
 
-        _requests.emplace(&task_scope, true, &is_done);
+        _requests.emplace(&task_scope);
     }
 
     _request_cv.notify_all();
-    return true;
-}
-bool ScopedTaskRunnerImpl::stop(ScopedTaskScopeImpl& task_scope)
-{
-    LOG_D("Request manager to stop task scope (%s)", task_scope.name());
-    
-    bool is_done{ false };
-    {
-       {
-            std::unique_lock<std::mutex> lock(_request_mtx);
-            _requests.emplace(&task_scope, false, &is_done);
-        }
-
-
-       if (!_is_running)
-       {
-           LOG_D("Request manager is stopped");
-           return false;
-       }
-        _request_cv.notify_all();
-    }
     return true;
 }
 
@@ -76,46 +58,43 @@ void ScopedTaskRunnerImpl::manager()
     for (;;)
     {
         Request request;
+        bool start{ false };
 
         {
             std::unique_lock<std::mutex> lock(_request_mtx);
-            _request_cv.wait(lock, [&]() {
+            using namespace std::chrono_literals;
+            bool is_timeout = _request_cv.wait_for(lock, 10s, [&]() {
                 return !_is_running || !_requests.empty();
                 });
+            
             if (!_is_running)
             {
-                LOG_D("Clear All Requests");
-                while (!_requests.empty())
-                {
-                    request = std::move(_requests.front());
-                    _requests.pop();
-                    if (request.is_activated)
-                    {
-                        LOG_D("Manager starts Worker (%s)", request.scope->name());
-                        request.scope->start();
-                    }
-                    else {
-                        LOG_D("Manager stops Worker (%s)", request.scope->name());
-                        request.scope->stop();
-                    }
-                }
                 break;
             }
-            request = std::move(_requests.front());
-            _requests.pop();
+            if (!is_timeout && _is_running)
+            {
+                start = false;
+            }
+            else
+            {
+                request = std::move(_requests.front());
+                _requests.pop();
+                start = true;
+            }
         }
 
-        if (request.is_activated)
+        if (start)
         {
             LOG_D("Manager starts Worker (%s)", request.scope->name());
             request.scope->start();
         }
         else {
-            LOG_D("Manager stops Worker (%s)", request.scope->name());
-            request.scope->stop();
+            LOG_D("Manager timeouts");
+            _onTimeout();
         }
 
     }    
 
-    _onClear();
+    LOG_D("Manager stop all workers\n");
+    _onStop();
 }

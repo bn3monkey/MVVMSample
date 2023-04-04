@@ -44,13 +44,13 @@ namespace Bn3Monkey
         ScopedTaskScope(const char* scope_name);
 
         template<class Func, class... Args>
-        void run(const char* task_name, Func&& func, Args&&... args)
+        void run(const Bn3Tag& task_name, Func&& func, Args&&... args)
         {
             _impl.run(task_name, std::forward<Func>(func), std::forward<Args>(args)...);
         }
 
         template<class Func, class... Args>
-        auto call(const char* task_name, Func&& func, Args&&... args) -> ScopedTaskResult<std::result_of_t<Func(Args...)>>
+        auto call(const Bn3Tag& task_name, Func&& func, Args&&... args) -> ScopedTaskResult<std::result_of_t<Func(Args...)>>
         {
             auto _result = _impl.call(task_name, std::forward<Func>(func), std::forward<Args>(args)...);
             
@@ -58,10 +58,24 @@ namespace Bn3Monkey
             return ScopedTaskResult(std::move(_result));
         }
 
+
     private:
         ScopedTaskScopeImpl& getScope(const char* scope_name);
         ScopedTaskScopeImpl& _impl;
     };
+
+    /*
+    class ScopedTaskLooper
+    {
+    public:
+        ScopedTaskLooper(const ScopedTaskScope& scope, std::function<void()> task);
+        void start();
+        void stop();
+
+    private:
+        ScopedTaskLooperImpl _impl;
+    };
+    */
 
     class ScopedTaskRunner
     {

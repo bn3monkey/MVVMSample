@@ -4,8 +4,8 @@
 
 void main()
 {
-    //tstMemoryPool();
-    testScopedTaskRunner();
+    testMemoryPool();
+    //testScopedTaskRunner();
     
     return;
 }

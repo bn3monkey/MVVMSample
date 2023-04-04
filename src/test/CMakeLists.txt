@@ -19,7 +19,7 @@ message("TEST_SOURCE_FILES is ${TEST_SOURCE_FILES}")
 add_executable(
     bn3monkey_test
     ${TEST_SOURCE_FILES}
-)
+ "framework/test_helper.cpp")
 
 target_include_directories(
     bn3monkey_test

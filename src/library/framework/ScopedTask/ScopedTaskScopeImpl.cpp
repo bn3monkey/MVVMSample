@@ -5,10 +5,8 @@ using namespace Bn3Monkey;
 
 ScopedTaskScopeImpl::ScopedTaskScopeImpl(const char* scope_name,
     std::function<bool(ScopedTaskScopeImpl&)> onStart,
-    std::function<bool(ScopedTaskScopeImpl&)> onStop,
     std::function<ScopedTaskScopeImpl*()> getCurrentScope) :
     _onStart(onStart),
-    _onStop(onStop),
     _getCurrentScope(getCurrentScope)
 {
     memcpy(_name, scope_name, 256);
@@ -16,7 +14,6 @@ ScopedTaskScopeImpl::ScopedTaskScopeImpl(const char* scope_name,
 
 ScopedTaskScopeImpl::ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other)
     : _onStart(std::move(other._onStart)),
-      _onStop(std::move(other._onStop)),
       _getCurrentScope(std::move(other._getCurrentScope)),
       _thread(std::move(other._thread)),
       _id(std::move(other._id)),
@@ -34,34 +31,73 @@ ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
 
 void ScopedTaskScopeImpl::start()
 {
-    LOG_D("Scope %s Starts", _name);
-    _thread = std::thread([&]() {worker(); });
+    LOG_D("Scope (%s) Starts", _name);
+    
+    // Because atomicity is guaranteed when running or calling from outside, _mtx is not locked.
+    if (_state == ScopeState::IDLE)
+    {
+        _state = ScopeState::EMPTY;
+        _thread = std::thread([&]() {worker(); });
+    }
+    else
+    {
+        LOG_E("Scope (%s) is already started", _name);
+        assert(true);
+    }
+}
+void ScopedTaskScopeImpl::timeout()
+{
+    LOG_D("Scope (%s) Timeouts", _name);
+
+    bool is_stopped{ false };
+    {
+        std::unique_lock<std::mutex> lock(_mtx);
+        if (ScopeState::EMPTY == _state)
+        {
+            _state = ScopeState::IDLE;
+            is_stopped = true;
+        }
+    }
+        /*
+        if (_mtx.try_lock())
+        {
+            if (ScopeState::EMPTY == _state)
+            {
+                _state = ScopeState::IDLE;
+                _thread.join();
+                _mtx.unlock();
+            }
+        }
+        else
+        {
+            LOG_D("Scope (%s) timeouts but scope is being used", _name);
+        }
+        */
+
+    if (is_stopped)
+    {
+        _cv.notify_all();
+        _thread.join();
+    }
 }
 void ScopedTaskScopeImpl::stop()
 {
     LOG_D("Scope %s Ends", _name);
-    _thread.join();
-}
-void ScopedTaskScopeImpl::clear()
-{
-    LOG_D("Scope %s Clear", _name);
-    bool isLaunched = false;
+    
+    bool is_stopped{ false };
     {
         std::unique_lock<std::mutex> lock(_mtx);
-        if (_state != ScopeState::IDLE)
+        if (ScopeState::IDLE != _state)
         {
-            LOG_D("Scope %s is launched", _name);
-            if (_state != ScopeState::EXPIRED)
-                _state = ScopeState::IDLE;
-            _id = std::thread::id();
-            isLaunched = true;
+            _state = ScopeState::IDLE;
+            is_stopped = true;
         }
     }
-    if (isLaunched)
+
+    if (is_stopped)
     {
         _cv.notify_all();
         _thread.join();
-        LOG_D("Scope %s Ends by Clear", _name);
     }
 }
 
@@ -74,6 +110,8 @@ void ScopedTaskScopeImpl::worker()
 
     _id = std::this_thread::get_id();
 
+    _cv.notify_all();
+
     for (;;)
     {
         {
@@ -81,23 +119,11 @@ void ScopedTaskScopeImpl::worker()
             using namespace std::chrono_literals;
             _current_task.clear();
 
-            bool is_timeout = _cv.wait_for(lock, 10s, [&]() {
+            _cv.wait(lock, [&]() {
                 return _state != ScopeState::EMPTY;
                 });
-            if (!is_timeout && _tasks.empty())
-            {
-                LOG_D("Worker (%s) : time out", _name);
-                bool ret = _onStop(*this);
-                if (!ret)
-                {
-                    LOG_D("Task Runner is not initialized");
-                    _state = ScopeState::EXPIRED;
-                }
-                else
-                    _state = ScopeState::IDLE;
-                _id = std::thread::id();
-            }
-            if (_state == ScopeState::IDLE || _state == ScopeState::EXPIRED)
+            
+            if (_state == ScopeState::IDLE)
             {
                 LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name);
                 while (!_tasks.empty())
@@ -109,7 +135,8 @@ void ScopedTaskScopeImpl::worker()
                 LOG_D("Worker (%s) Ends", _name);
                 break;
             }
-            _state = ScopeState::RUNNING;
+
+            
             _current_task = std::move(_tasks.front());
             _tasks.pop();
 
@@ -124,18 +151,21 @@ void ScopedTaskScopeImpl::worker()
                 LOG_D("Scope(%s) - Tasks remained", _name);
             }
         }
+
         LOG_D("Scope(%s) - Tasks(%s) start", _name, _current_task.name());
         _current_task.invoke();
         LOG_D("Scope(%s) - Tasks(%s) ends", _name, _current_task.name());
-
     }
 }
 
 /***********************************************/
+ScopedTaskScopeImplPool::ScopedTaskScopeImplPool()
+{
+    _onTimeout = [&]() {timeout(); };
+    _onClear = [&]() {clear(); };
+}
 
-ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getScope(const char* scope_name,
-    std::function<bool(ScopedTaskScopeImpl&)> onStart,
-    std::function<bool(ScopedTaskScopeImpl&)> onStop)
+ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getScope(const char* scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart)
 {
     auto iter = _scopes.find(scope_name);
     if (iter != _scopes.end())
@@ -147,7 +177,7 @@ ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getScope(const char* scope_name,
         return getCurrentScope();
     };
 
-    _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, onStop, temp_getCurrentScope));
+    _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, temp_getCurrentScope));
     auto& ret = _scopes.at(scope_name);
     return &ret;
 }
@@ -159,12 +189,20 @@ ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getCurrentScope() {
     }
     return nullptr;
 }
-void ScopedTaskScopeImplPool::clearScope()
+void ScopedTaskScopeImplPool::timeout()
 {
     for (auto& iter : _scopes)
     {
         auto& scope = iter.second;
-        scope.clear();
+        scope.timeout();
+    }
+}
+void ScopedTaskScopeImplPool::clear()
+{
+    for (auto& iter : _scopes)
+    {
+        auto& scope = iter.second;
+        scope.stop();
     }
     _scopes.clear();
 }

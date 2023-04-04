@@ -21,5 +21,5 @@ public:
 		say("Block Released");
 	}
 
-	char buffer[BlockSize - 16];
+	char buffer[BlockSize - 32];
 };

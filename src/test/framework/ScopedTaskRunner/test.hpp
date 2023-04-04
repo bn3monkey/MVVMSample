@@ -2,6 +2,8 @@
 #include "../test_helper.hpp"
 
 using namespace std::chrono_literals;
+
+
 void test_run(bool value)
 {
 	if (!value)
@@ -17,23 +19,23 @@ void test_run(bool value)
 	auto device = ScopedTaskScope("device");
 	auto ip = ScopedTaskScope("ip");
 
-	main.run("main1", [&]() {
+	main.run(Bn3Tag("main1"), [&]() {
 		say("Main1");
 
 		});
 
-	main.run("main2", [&]() {
+	main.run(Bn3Tag("main2"), [&]() {
 
-		device.run("device1", [&]() {
+		device.run(Bn3Tag("device1"), [&]() {
 			say("Device1");
 			});
 
 
-		main.run("main3", [&]() {
+		main.run(Bn3Tag("main3"), [&]() {
 			say("Main3");
 			});
 
-		main.run("main4", [&]() {
+		main.run(Bn3Tag("main4"), [&]() {
 			say("Main4");
 			});
 
@@ -42,29 +44,29 @@ void test_run(bool value)
 		
 		});
 
-	device.run("device2", [&]() {
+	device.run(Bn3Tag("device2"), [&]() {
 		say("Device2");
 		});
 
-	ip.run("ip1", [&]() {
+	ip.run(Bn3Tag("ip1"), [&]() {
 		say("IP1");
 		});
 
-	device.run("device3", [&]() {
+	device.run(Bn3Tag("device3"), [&]() {
 		say("Device3");
 		});
 
-	ip.run("ip2", [&]() {
+	ip.run(Bn3Tag("ip2"), [&]() {
 		say("IP2");
 		});
 
 
-	main.run("(1) main", [&]() {
-		device.run("(2) device", [&]() {
-			ip.run("(3) ip", [&]() {
-				main.run("(4) main", [&]() {
-					device.run("(5) device", [&]() {
-						ip.run("(6) ip", [&]() {
+	main.run(Bn3Tag("(1) main"), [&]() {
+		device.run(Bn3Tag("(2) device"), [&]() {
+			ip.run(Bn3Tag("(3) ip"), [&]() {
+				main.run(Bn3Tag("(4) main"), [&]() {
+					device.run(Bn3Tag("(5) device"), [&]() {
+						ip.run(Bn3Tag("(6) ip"), [&]() {
 								say("(6) ip");
 
 							});
@@ -109,12 +111,12 @@ void test_runCancelled(bool value)
 		auto device = ScopedTaskScope("device");
 		auto ip = ScopedTaskScope("ip");
 
-		main.run("(1) main", [&]() {
-			device.run("(2) device", [&]() {
-				ip.run("(3) ip", [&]() {
-					main.run("(4) main", [&]() {
-						device.run("(5) device", [&]() {
-							ip.run("(6) ip", [&]() {
+		main.run(Bn3Tag("(1) main"), [&]() {
+			device.run(Bn3Tag("(2) device"), [&]() {
+				ip.run(Bn3Tag("(3) ip"), [&]() {
+					main.run(Bn3Tag("(4) main"), [&]() {
+						device.run(Bn3Tag("(5) device"), [&]() {
+							ip.run(Bn3Tag("(6) ip"), [&]() {
 								say("(6) ip");
 
 								});
@@ -142,7 +144,7 @@ void test_runCancelled(bool value)
 
 int call_and_collect(const char* task_name, Bn3Monkey::ScopedTaskScope& scope, std::function<int()> inner)
 {
-	auto task = scope.call(task_name, inner);
+	auto task = scope.call(Bn3Monkey::Bn3Tag(task_name), inner);
 	auto result = task.wait();
 	if (result)
 	{
@@ -172,33 +174,33 @@ void test_call(bool value)
 
 	for (int i = 1; i <= 10; i++)
 	{
-		auto task = main.call("Main1", [&, i]() {
+		auto task = main.call(Bn3Tag("Main1"), [&, i]() {
 			say("Main1 Called (%d)", i);
 			int sum = 0;
 
-			auto device1 = device.call("Device1", [&, i]() {
+			auto device1 = device.call(Bn3Tag("Device1"), [&, i]() {
 				say("Device1 Called (%d)", i);
 				return i*1;
 				});
 
-			auto ip1 = ip.call("Ip1", [&, i]() {
+			auto ip1 = ip.call(Bn3Tag("Ip1"), [&, i]() {
 				say("Ip1 Called (%d)", i);
 				return i * 1000;
 				});
 
-			auto device2 = device.call("Device2", [&, i]() {
+			auto device2 = device.call(Bn3Tag("Device2"), [&, i]() {
 				say("Device2 Called (%d)", i);
 				return i * 10;
 				});
 
-			auto device3 = device.call("Device3", [&, i]() {
+			auto device3 = device.call(Bn3Tag("Device3"), [&, i]() {
 				say("Device3 Called (%d)", i);
 				int sum = 0;
-				auto ui1 = ui.call("UI1", [&, i]() {
+				auto ui1 = ui.call(Bn3Tag("UI1"), [&, i]() {
 					say("UI1 Called (%d)", i);
 					return i * 20;
 					});
-				auto ui2 = ui.call("UI2", [&, i]() {
+				auto ui2 = ui.call(Bn3Tag("UI2"), [&, i]() {
 					say("UI2 Called (%d)", i);
 					return i * 80;
 					});
@@ -224,7 +226,7 @@ void test_call(bool value)
 				return sum;
 				});
 
-			auto ip2 = ip.call("Ip2", [&, i]() {
+			auto ip2 = ip.call(Bn3Tag("Ip2"), [&, i]() {
 				say("Ip2 Called (%d)", i);
 				return i * 10000;
 				});
@@ -306,7 +308,9 @@ void testScopedTaskRunner()
 	{
 		test_run(true);
 		test_runCancelled(true);
-		test_call(false);
+		test_call(true);
 	}
+
+	printf("%s\n", analyzer.analyze().c_str());
 	Bn3Monkey::Bn3MemoryPool::release();
 }

@@ -4,21 +4,21 @@
 #include "../test_helper.hpp"
 
 
-constexpr size_t block_sizes[] = { 32, 64, 128, 256, 512, 1024, 2048, 4098, 8192 };
-
+constexpr size_t block_sizes[] = { 64, 128, 256, 512, 1024, 2048, 4098, 8192 };
+constexpr size_t block_sizes_length = sizeof(block_sizes) / sizeof(size_t);
 
 template<size_t idx>
-void inner_test_alloc(BlockBase* (&ptr)[9][5])
+void inner_test_alloc(BlockBase* (&ptr)[block_sizes_length][5])
 {
 	using namespace Bn3Monkey;
 	constexpr size_t block_size = block_sizes[idx];
 
-	ptr[idx][0] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[idx][1] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[idx][2] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[idx][3] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
+	ptr[idx][0] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p0"));
+	ptr[idx][1] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p1"));
+	ptr[idx][2] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p2"));
+	ptr[idx][3] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p3"));
 
-	ptr[idx][4] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
+	ptr[idx][4] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p4"));
 	if (ptr[idx][4] == nullptr)
 	{
 		say("Good! (Allocate Full check)");
@@ -27,17 +27,17 @@ void inner_test_alloc(BlockBase* (&ptr)[9][5])
 	inner_test_alloc<idx - 1>(ptr);
 }
 template<>
-void inner_test_alloc<0>(BlockBase* (&ptr)[9][5])
+void inner_test_alloc<0>(BlockBase* (&ptr)[block_sizes_length][5])
 {
 	using namespace Bn3Monkey;
 	constexpr size_t block_size = block_sizes[0];
 
-	ptr[0][0] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[0][1] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[0][2] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
-	ptr[0][3] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
+	ptr[0][0] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p0"));
+	ptr[0][1] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p1"));
+	ptr[0][2] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p2"));
+	ptr[0][3] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p3"));
 
-	ptr[0][4] = Bn3MemoryPool::allocate_and_initialize < Block<block_size> >();
+	ptr[0][4] = Bn3MemoryPool::construct < Block<block_size> >(Bn3Tag("p4"));
 	if (ptr[0][4] == nullptr)
 	{
 		say("Good! (Allocate Full check)");
@@ -45,20 +45,20 @@ void inner_test_alloc<0>(BlockBase* (&ptr)[9][5])
 }
 
 template<size_t idx>
-void inner_test_dealloc(BlockBase* (&ptr)[9][5])
+void inner_test_dealloc(BlockBase* (&ptr)[block_sizes_length][5])
 {
 	using namespace Bn3Monkey;
 	constexpr size_t block_size = block_sizes[idx];
 
-	Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][0]);
-	ptr[idx][4] = Bn3MemoryPool::allocate_and_initialize < Block<block_size >>();
+	Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][0]);
+	ptr[idx][4] = Bn3MemoryPool::construct < Block<block_size >>(Bn3Tag("newp4"));
 
-	Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][1]);
-	Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][2]);
-	Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][3]);
-	Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][4]);
+	Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][1]);
+	Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][2]);
+	Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][3]);
+	Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][4]);
 
-	if (!Bn3MemoryPool::deallocate((Block<block_size> *)ptr[idx][4]))
+	if (!Bn3MemoryPool::destroy((Block<block_size> *)ptr[idx][4]))
 	{
 		say("Good! (Double Free check)");
 	}
@@ -66,21 +66,21 @@ void inner_test_dealloc(BlockBase* (&ptr)[9][5])
 	inner_test_dealloc<idx - 1>(ptr);
 }
 template<>
-void inner_test_dealloc<0>(BlockBase* (&ptr)[9][5])
+void inner_test_dealloc<0>(BlockBase* (&ptr)[block_sizes_length][5])
 {
 	using namespace Bn3Monkey;
 	
 	constexpr size_t block_size = block_sizes[0];
 
-	Bn3MemoryPool::deallocate(ptr[0][0]);
-	ptr[0][4] = Bn3MemoryPool::allocate_and_initialize < Block<block_size >>();
+	Bn3MemoryPool::destroy(ptr[0][0]);
+	ptr[0][4] = Bn3MemoryPool::construct < Block<block_size >>(Bn3Tag("newp4"));
 
-	Bn3MemoryPool::deallocate(ptr[0][1]);
-	Bn3MemoryPool::deallocate(ptr[0][2]);
-	Bn3MemoryPool::deallocate(ptr[0][3]);
-	Bn3MemoryPool::deallocate(ptr[0][4]);
+	Bn3MemoryPool::destroy(ptr[0][1]);
+	Bn3MemoryPool::destroy(ptr[0][2]);
+	Bn3MemoryPool::destroy(ptr[0][3]);
+	Bn3MemoryPool::destroy(ptr[0][4]);
 
-	if (!Bn3MemoryPool::deallocate(ptr[0][4]))
+	if (!Bn3MemoryPool::destroy(ptr[0][4]))
 	{
 		say("Good! (Double Free check)");
 	}
@@ -94,23 +94,23 @@ void test_alloc(bool value)
 	using namespace Bn3Monkey;
 
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
-	BlockBase* ptr[9][5];
+	BlockBase* ptr[block_sizes_length][5];
 
-	inner_test_alloc<8>(ptr);
-	inner_test_dealloc<8>(ptr);
+	inner_test_alloc<block_sizes_length-1>(ptr);
+	inner_test_dealloc<block_sizes_length - 1>(ptr);
 
 	{
-		auto* ptr = Bn3MemoryPool::allocate_and_initialize < Block<10000 >> ();
-		auto* ptr2 = Bn3MemoryPool::allocate_and_initialize < Block<10000 >> ();
-		auto* ptr3 = Bn3MemoryPool::allocate_and_initialize < Block<10000 >> ();
-		auto* ptr4 = Bn3MemoryPool::allocate_and_initialize < Block<10000 >> ();
-		auto* ptr5 = Bn3MemoryPool::allocate_and_initialize < Block<10000 >> ();
+		auto* ptr = Bn3MemoryPool::construct < Block<10000 >> (Bn3Tag("big1"));
+		auto* ptr2 = Bn3MemoryPool::construct < Block<10000 >> (Bn3Tag("big2"));
+		auto * ptr3 = Bn3MemoryPool::construct < Block<10000 >>(Bn3Tag("big3"));
+		auto * ptr4 = Bn3MemoryPool::construct < Block<10000 >>(Bn3Tag("big4"));
+		auto * ptr5 = Bn3MemoryPool::construct < Block<10000 >>(Bn3Tag("big5"));
 
-		Bn3MemoryPool::deallocate(ptr);
-		Bn3MemoryPool::deallocate(ptr2);
-		Bn3MemoryPool::deallocate(ptr3);
-		Bn3MemoryPool::deallocate(ptr4);
-		Bn3MemoryPool::deallocate(ptr5);
+		Bn3MemoryPool::destroy(ptr);
+		Bn3MemoryPool::destroy(ptr2);
+		Bn3MemoryPool::destroy(ptr3);
+		Bn3MemoryPool::destroy(ptr4);
+		Bn3MemoryPool::destroy(ptr5);
 	}
 
 
@@ -127,8 +127,10 @@ void test_dealloc_nullptr(bool value)
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
 	
 	Block<32>* ptr = nullptr;
-	Bn3MemoryPool::deallocate(ptr);
+	Bn3MemoryPool::destroy(ptr);
 
+
+	
 	Bn3MemoryPool::release();
 }
 
@@ -140,20 +142,25 @@ void test_alloc_and_initialize(bool value)
 	using namespace Bn3Monkey;
 
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
+	
+	{
+		auto* ptr = Bn3MemoryPool::construct<Block<32>>(Bn3Tag("a_ptr"), 'a');
+		Bn3MemoryPool::destroy(ptr);
+	}
+	{
+		auto* ptr = Bn3MemoryPool::construct<Block<64>>(Bn3Tag("b_ptr"), 'b');
+		Bn3MemoryPool::destroy(ptr);
+	}
+	{
+		auto* ptr = Bn3MemoryPool::construct<Block<256>>(Bn3Tag("c_ptr"), 'c');
+		Bn3MemoryPool::destroy(ptr);
+	}
+	{
+		auto* ptr = Bn3MemoryPool::construct<Block<9000>>(Bn3Tag("d_ptr"), 'd');
+		Bn3MemoryPool::destroy(ptr);
+	}
 
-	{
-		auto* ptr = Bn3MemoryPool::allocate_and_initialize<Block<32>>('a');
-		Bn3MemoryPool::deallocate(ptr);
-	}
-	{
-		auto* ptr = Bn3MemoryPool::allocate_and_initialize<Block<64>>('b');
-		Bn3MemoryPool::deallocate(ptr);
-	}
-	{
-		auto* ptr = Bn3MemoryPool::allocate_and_initialize<Block<9000>>('c');
-		Bn3MemoryPool::deallocate(ptr);
-	}
-
+	
 	Bn3MemoryPool::release();
 }
 
@@ -166,26 +173,53 @@ void test_alloc_array(bool value)
 
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
 
+	
 	{
-		auto* ptr = Bn3MemoryPool::allocate<Block<128>>(5);
+		auto* ptr = Bn3MemoryPool::allocate<Block<128>>(Bn3Tag("128"), 5);
 		Bn3MemoryPool::deallocate(ptr, 5);
 	}
 
 	{
-		auto* ptr = Bn3MemoryPool::allocate<Block<256>>(6);
+		auto* ptr = Bn3MemoryPool::allocate<Block<256>>(Bn3Tag("256"), 6);
 		Bn3MemoryPool::deallocate(ptr, 6);
 	}
 
 	{
-		auto* ptr = Bn3MemoryPool::allocate<Block<3000>>(5);
+		auto* ptr = Bn3MemoryPool::allocate<Block<3000>>(Bn3Tag("3000"), 5);
 		Bn3MemoryPool::deallocate(ptr, 5);
 	}
 
 	{
-		auto* ptr = Bn3MemoryPool::allocate<Block<1000>>(4);
+		auto* ptr = Bn3MemoryPool::allocate<Block<1000>>(Bn3Tag("1000"), 4);
 		Bn3MemoryPool::deallocate(ptr, 4);
 	}
 
+	
+	Bn3MemoryPool::release();
+}
+
+void test_sharedPtr(bool value)
+{
+	if (!value)
+		return;
+
+	using namespace Bn3Monkey;
+
+	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
+	
+
+	{
+		auto ptr = makeSharedFromMemoryPool<Block<64>>(Bn3Tag("64"));
+		auto ptr2 = ptr;
+	}
+
+
+	{
+		auto ptr = makeSharedFromMemoryPool<Block<128>>(Bn3Tag("128"));
+		auto ptr2 = ptr;
+	}
+
+	
 	Bn3MemoryPool::release();
 }
 
@@ -196,24 +230,30 @@ void test_allocator(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
+	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 256, 256);
 
+	constexpr static char vector_name[] = "vector1";
+	constexpr static char map_name[] = "map1";
 
+	
 	{
-
-		auto ptr = std::shared_ptr<Block<32>>(Bn3MemoryPool::allocate<Block<32>>(1), [](Block<32>* ptr) {
-			Bn3MemoryPool::deallocate<Block<32>>(ptr);
-			}
-		);
-		auto ptr2 = ptr;
+		std::vector<int, Bn3Allocator<int, vector_name>> sans;
+		sans.resize(15);
+		sans[0] = 1;
+		sans[1] = 2;
+		sans[2] = 3;
+		sans[3] = 4;
+		int a = sans[0];
+		int b = sans[1];
 	}
-
 	{
-		auto ptr = std::shared_ptr<Block<64>>(Bn3MemoryPool::allocate<Block<64>>(1), [](Block<64>* ptr) {
-			Bn3MemoryPool::deallocate<Block<64>>(ptr);
-			}
-		);
-		auto ptr2 = ptr;
+		std::unordered_map<std::string, int, std::hash<std::string>, std::equal_to<std::string>, Bn3Allocator<std::pair<const std::string, int>, map_name>> papyrus;
+		for (int i = 0; i < 128; i++)
+		{
+			std::stringstream ss;
+			ss << i;
+			papyrus[ss.str()] = i;
+		}
 	}
 
 	Bn3MemoryPool::release();
@@ -222,6 +262,7 @@ void test_allocator(bool value)
 void testMemoryPool()
 {
 	test_allocator(true);
+	test_sharedPtr(true);
 	test_alloc(true);
 	test_dealloc_nullptr(true);
 	test_alloc_and_initialize(true);

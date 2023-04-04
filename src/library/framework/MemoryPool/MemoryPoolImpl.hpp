@@ -5,6 +5,10 @@
 #include <vector>
 #include <functional>
 
+#include <string>
+#include <sstream>
+
+#include "../Tag/Tag.hpp"
 #include "../Log/Log.hpp"
 
 #ifdef BN3MONKEY_DEBUG
@@ -29,24 +33,25 @@
 
 namespace Bn3Monkey
 {
-    constexpr size_t BLOCK_SIZE_POOL[] = { 32, 64, 128, 256, 512, 1024, 4096, 8192, 8192};
+    constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 8192};
     constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
     constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
-    constexpr size_t HEADER_SIZE = 16;
+    constexpr size_t HEADER_SIZE = 32;
 
     template<size_t BlockSize>
     struct Bn3MemoryBlock
     {
         constexpr static unsigned int MAGIC_NUMBER = 0xFEDCBA98;
-        struct alignas(HEADER_SIZE) Bn3MemoryHeader
+        struct alignas(16) Bn3MemoryHeader
         {
             const unsigned int dirty = 0xFEDCBA98;
             bool is_allocated{ false };
             Bn3MemoryBlock<BlockSize>* freed_ptr{nullptr};
+            Bn3Tag tag;
         };
 
         constexpr static size_t size = BlockSize;
-        constexpr static size_t header_size = HEADER_SIZE;
+        constexpr static size_t header_size = sizeof(Bn3MemoryHeader);
         constexpr static size_t content_size = BlockSize - header_size;
 
         Bn3MemoryHeader header;
@@ -142,9 +147,40 @@ namespace Bn3Monkey
             return reinterpret_cast<Bn3MemoryBlockPool<idx-1>*>(this)->initialize(std::forward<size_t>(sizes)...);
         }
 
+        std::string analysis() {
+            std::stringstream ss;
+            ss << "- Memory Block Pool (" << idx << " / " << block_size << ") - \n";
+            ss << "    Max allocated : " << max_allocated << "\n\n";
+
+            size_t start_idx = freed_ptr - front;
+
+            for (size_t i = 0; i < blocks.size(); i++)
+            {
+                auto& block = blocks[i];
+                auto& is_allocated = block.header.is_allocated;
+                auto tag = block.header.tag.str();
+
+                if (start_idx == i)
+                    ss << "S";
+                else
+                    ss << " ";
+                ss << "   (" << i << ") : " << (is_allocated ? "O" : "X") << " [" << tag << "] ";
+
+                auto freed_ptr =  block.header.freed_ptr;
+                if (freed_ptr == nullptr)
+                    ss << " -> null\n";
+                else
+                {
+                    auto next_i = freed_ptr - front;
+                    ss << " -> " << next_i << "\n";
+                }
+            }
+            ss << "\n";
+            return ss.str();
+        }
+
         void release()
         {
-            LOG_D("Max allocated value is (%llu) in Memory Block Pool (%d)", max_allocated, idx);
             blocks.clear();
             freed_ptr = nullptr;
             front = nullptr;
@@ -153,7 +189,7 @@ namespace Bn3Monkey
             reinterpret_cast<Bn3MemoryBlockPool<idx - 1>*>(this)->release();
         }
 
-        void* allocate()
+        void* allocate(const Bn3Tag& tag)
         {
             Bn3MemoryBlock<block_size>* ret{ nullptr };
             {
@@ -177,6 +213,7 @@ namespace Bn3Monkey
                 freed_ptr = next_freed_ptr;
 
                 ret->header.is_allocated = true;
+                ret->header.tag = tag;
             }
 
             auto* ptr = ret->content;
@@ -203,6 +240,8 @@ namespace Bn3Monkey
                 current_allocated -= 1;
 
                 block_ptr->header.is_allocated = false;
+                block_ptr->header.tag.clear();
+
                 block_ptr->header.freed_ptr = freed_ptr;
                 freed_ptr = block_ptr;
 
@@ -250,16 +289,49 @@ namespace Bn3Monkey
 
             return true;
         }
+
+        std::string analysis() {
+            std::stringstream ss;
+            ss << "- Memory Block Pool (" << 0 << " / " << block_size << ") - \n";
+            ss << "    Max allocated : " << max_allocated << "\n\n";
+
+            size_t start_idx = freed_ptr - front;
+
+            for (size_t i = 0; i < blocks.size(); i++)
+            {
+                auto& block = blocks[i];
+                auto& is_allocated = block.header.is_allocated;
+                auto tag = block.header.tag.str();
+
+                if (start_idx == i)
+                    ss << "S";
+                else
+                    ss << " ";
+                ss << "   (" << i << ") : " << (is_allocated ? "O" : "X") << " [" << tag << "] ";
+
+                auto freed_ptr = block.header.freed_ptr;
+                if (freed_ptr == nullptr)
+                    ss << " -> null\n";
+                else
+                {
+                    auto next_i = freed_ptr - front;
+                    ss << " -> " << next_i << "\n";
+                }
+            }
+
+            ss << "\n";
+            return ss.str();
+        }
+
         void release()
         {
-            LOG_D("Max allocated value is (%llu) in Memory Block Pool (%d)", max_allocated, 0);
             blocks.clear();
             freed_ptr = nullptr;
             front = nullptr;
             back = nullptr;
         }
 
-        void* allocate()
+        void* allocate(const Bn3Tag& tag)
         {
             Bn3MemoryBlock<block_size>* ret{ nullptr };
             {
@@ -283,6 +355,7 @@ namespace Bn3Monkey
                 freed_ptr = next_freed_ptr;
 
                 ret->header.is_allocated = true;
+                ret->header.tag = tag;
             }
 
             auto* ptr = ret->content;
@@ -308,6 +381,8 @@ namespace Bn3Monkey
                 current_allocated -= 1;
 
                 block_ptr->header.is_allocated = false;
+                block_ptr->header.tag.clear();
+
                 block_ptr->header.freed_ptr = freed_ptr;
                 freed_ptr = block_ptr;
 
@@ -349,8 +424,8 @@ namespace Bn3Monkey
         void setFunction()
         {
             setFunction<size - 1>();
-            allocators[size] = [&]() {
-                return reinterpret_cast<Bn3MemoryBlockPool<size>*>(this)->allocate();
+            allocators[size] = [&](const Bn3Tag& tag) {
+                return reinterpret_cast<Bn3MemoryBlockPool<size>*>(this)->allocate(tag);
             };
             deallocators[size] = [&](void* ptr) {
                 return reinterpret_cast<Bn3MemoryBlockPool<size>*>(this)->deallocate(ptr);
@@ -359,8 +434,8 @@ namespace Bn3Monkey
 
         template<>
         void setFunction<0>() {
-            allocators[0] = [&]() {
-                return reinterpret_cast<Bn3MemoryBlockPool<0>*>(this)->allocate();
+            allocators[0] = [&](const Bn3Tag& tag) {
+                return reinterpret_cast<Bn3MemoryBlockPool<0>*>(this)->allocate(tag);
             };
             deallocators[0] = [&](void* ptr) {
                 return reinterpret_cast<Bn3MemoryBlockPool<0>*>(this)->deallocate(ptr);
@@ -381,7 +456,7 @@ namespace Bn3Monkey
         }
 
         template<class Type, class... Args>
-        Type* allocate_and_initialize(Args... args)
+        Type* construct(const Bn3Tag& tag, Args... args)
         {
             constexpr size_t object_size = sizeof(Type);
             constexpr size_t idx = Bn3BlockHelper<object_size>::idx;
@@ -392,7 +467,7 @@ namespace Bn3Monkey
                 ret = new Type(std::forward<Args>(args)...);
                 return ret;
             }
-            auto* ptr = reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->allocate();
+            auto* ptr = reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->allocate(tag);
             if (!ptr)
             {
                 LOG_E("The capcatiy of memory block pool has been exceeded");
@@ -403,30 +478,7 @@ namespace Bn3Monkey
         }
 
         template<class Type>
-        Type* allocate_and_initialize()
-        {
-            constexpr size_t object_size = sizeof(Type);
-            constexpr size_t idx = Bn3BlockHelper<object_size>::idx;
-            Type* ret = nullptr;
-
-            if (idx >= pool_size)
-            {
-                ret = new Type();
-                return ret;
-            }
-            auto* ptr = reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->allocate();
-            if (!ptr)
-            {
-                LOG_E("The capcatiy of memory block pool has been exceeded");
-                return nullptr;
-            }
-            ret = new (ptr) Type();
-            return ret;
-        }
-
-
-        template<class Type>
-        bool deallocate(Type* reference)
+        bool destroy(Type* reference)
         {
             constexpr size_t object_size = sizeof(Type);
             constexpr size_t idx = Bn3BlockHelper<object_size>::idx;
@@ -442,29 +494,24 @@ namespace Bn3Monkey
         }
 
         template<class Type>
-        Type* allocate(size_t size)
+        Type* allocate(const Bn3Tag& tag, size_t size)
         {
-            if (size == 1)
-                return allocate_and_initialize<Type>();
-
             constexpr size_t object_size = sizeof(Type);
             size_t idx = Bn3BlockHelper<object_size>::idxOfArray(size);
             if (idx >= pool_size)
             {
-                return new Type[size];
+                auto* ptr =  new char[object_size * size];
+                Type* ret = reinterpret_cast<Type*>(ptr);
+                return ret;
             }
 
-            auto* ptr = allocators[idx]();
+            auto* ptr = allocators[idx](tag);
             if (!ptr)
             {
                 LOG_E("The capcatiy of memory block pool has been exceeded");
                 return nullptr;
             }
             Type* ret = reinterpret_cast<Type*>(ptr);
-            for (size_t i = 0; i < size; i++)
-            {
-                new (ret + i) Type();
-            }
             return ret;
         }
 
@@ -472,31 +519,40 @@ namespace Bn3Monkey
         template<class Type>
         bool deallocate(Type* reference, size_t size)
         {
-            if (size == 1)
-                return deallocate(reference);
-
             constexpr size_t object_size = sizeof(Type);
             size_t idx = Bn3BlockHelper<object_size>::idxOfArray(size);
             if (idx >= pool_size)
             {
-                delete[] reference;
+                delete[] (char *)reference;
                 return true;
             }
 
-            if (reference)
-            {
-                for (size_t i = 0; i < size; i++)
-                {
-                    auto* ptr = reference + i;
-                    ptr->~Type();
-                }
-            }
             bool ret = deallocators[idx](reference);
             return ret;
         }
 
+
+
+        std::string analysis()
+        {
+            return analysisPool<pool_size - 1>();
+        }
+
     private:
-        std::function<void* ()> allocators[pool_size];
+        template<size_t idx>
+        std::string analysisPool() {
+            std::stringstream ss;
+            ss << analysisPool<idx - 1>();
+            ss << reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->analysis();
+            return ss.str();
+        }
+
+        template<>
+        std::string analysisPool<0>() {
+            return reinterpret_cast<Bn3MemoryBlockPool<0>*>(this)->analysis();
+        }
+
+        std::function<void* (const Bn3Tag& tag)> allocators[pool_size];
         std::function<bool(void*)> deallocators[pool_size];
     };
 }

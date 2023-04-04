@@ -35,11 +35,9 @@
 #include "../MemoryPool/MemoryPool.hpp"
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
-#define ALLOC(TYPE, ...) Bn3Monkey::Bn3MemoryPool::allocate_and_initialize<TYPE>(__VA_ARGS__)
-#define MAKE_SHARED(TYPE, PTR) std::shared_ptr<TYPE>(PTR, [](TYPE* ptr) { Bn3Monkey::Bn3MemoryPool::deallocate(ptr); })
+#define MAKE_SHARED(TYPE, NAME, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(Bn3Monkey::Bn3Tag(NAME), __VA_ARGS__)
 #else
-#define ALLOC(TYPE, ...) new TYPE(__VA_ARGS__)
-#define MAKE_SHARED(TYPE, PTR) std::shared_ptr<TYPE>(PTR)
+#define MAKE_SHARED(TYPE, NAME, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
 #endif
 
 namespace Bn3Monkey
@@ -58,14 +56,14 @@ namespace Bn3Monkey
     class ScopedTaskResultImpl
     {
     public:
-        ScopedTaskResultImpl(const char* name)
+        ScopedTaskResultImpl(const Bn3Tag& task_name)
         {
-            memcpy(_name, name, 256);
-            LOG_D("ScopedTaskResultImpl (%s) Created", _name);
+            _name = task_name;
+            LOG_D("ScopedTaskResultImpl (%s) Created", _name.str());
         }
         virtual ~ScopedTaskResultImpl()
         {
-            LOG_D("ScopedTaskResultImpl (%s) Removed", _name);
+            LOG_D("ScopedTaskResultImpl (%s) Removed", _name.str());
         }
         ScopedTaskResultImpl(ScopedTaskResultImpl&& other) = delete;
         ScopedTaskResultImpl(const ScopedTaskResultImpl& other) = delete;
@@ -77,7 +75,7 @@ namespace Bn3Monkey
                 _state = ScopedTaskState::CANCELLED;
             }
             _cv.notify_all();
-            LOG_D("Task Result cancelled (%s)", _name);
+            LOG_D("Task Result cancelled (%s)", _name.str());
         }
         
         virtual void notify(const Type& result)
@@ -88,17 +86,17 @@ namespace Bn3Monkey
                 memcpy(_result, &result, sizeof(Type));
             }
             _cv.notify_all();
-            LOG_D("Task Result notified (%s)", _name);
+            LOG_D("Task Result notified (%s)", _name.str());
         }
         virtual Type* wait()
         {
             if (_state == ScopedTaskState::INVALID)
             {
-                LOG_E("This task (%s) is invalid!\n", _name);
+                LOG_E("This task (%s) is invalid!\n", _name.str());
                 assert(false);
             }
 
-            LOG_D("Waited by Task Result (%s)", _name);
+            LOG_D("Waited by Task Result (%s)", _name.str());
             // 처리하고 있는 Scope가 처리가 끝나면 알려준다.
             {
                 std::unique_lock<std::mutex> lock(_mtx);
@@ -115,9 +113,9 @@ namespace Bn3Monkey
         }
 
 
-        inline const char* name() { return _name; }
+        inline const char* name() { return _name.str(); }
     private:
-        char _name[256]{ 0 };
+        Bn3Tag _name;
         ScopedTaskState _state{ ScopedTaskState::NOT_FINISHED };
         char _result[sizeof(Type)]{ 0 };
         // Not moved. Just use.
@@ -129,14 +127,14 @@ namespace Bn3Monkey
     class ScopedTaskResultImpl<void>
     {
     public:
-        ScopedTaskResultImpl(const char* name)
+        ScopedTaskResultImpl(const Bn3Tag& task_name)
         {
-            memcpy(_name, name, 256);
-            LOG_D("ScopedTaskResultImpl (%s) Created", _name);
+            _name = task_name;
+            LOG_D("ScopedTaskResultImpl (%s) Created", _name.str());
         }
         virtual ~ScopedTaskResultImpl()
         {
-            LOG_D("ScopedTaskResultImpl (%s) Removed", _name);
+            LOG_D("ScopedTaskResultImpl (%s) Removed", _name.str());
         }
         ScopedTaskResultImpl(ScopedTaskResultImpl&& other) = delete;
         ScopedTaskResultImpl(const ScopedTaskResultImpl& other) = delete;
@@ -148,7 +146,7 @@ namespace Bn3Monkey
                 _state = ScopedTaskState::CANCELLED;
             }
             _cv.notify_all();
-            LOG_D("Task Result cancelled (%s)", _name);
+            LOG_D("Task Result cancelled (%s)", _name.str());
         }
 
         void notify()
@@ -158,17 +156,17 @@ namespace Bn3Monkey
                 _state = ScopedTaskState::FINISHED;
             }
             _cv.notify_all();
-            LOG_D("Task Result notified (%s)", _name);
+            LOG_D("Task Result notified (%s)", _name.str());
         }
         void wait()
         {
             if (_state == ScopedTaskState::INVALID)
             {
-                LOG_E("This task (%s) is invalid!\n", _name);
+                LOG_E("This task (%s) is invalid!\n", _name.str());
                 assert(false);
             }
 
-            LOG_D("Waited by Task Result (%s)", _name);
+            LOG_D("Waited by Task Result (%s)", _name.str());
             // 처리하고 있는 Scope가 처리가 끝나면 알려준다.
             {
                 std::unique_lock<std::mutex> lock(_mtx);
@@ -181,9 +179,9 @@ namespace Bn3Monkey
         }
 
 
-        inline const char* name() { return _name; }
+        inline const char* name() { return _name.str(); }
     private:
-        char _name[256]{ 0 };
+        Bn3Tag _name;
         ScopedTaskState _state{ ScopedTaskState::NOT_FINISHED };
 
         // Not moved. Just use.
@@ -201,10 +199,10 @@ namespace Bn3Monkey
             LOG_D("Scoped Task Not Initialized");
         }
 
-        ScopedTask(const char* name)
+        ScopedTask(const Bn3Tag& name)
         {
-            memcpy(_name, name, 256);
-            LOG_D("Scoped Task (%s) Created", _name);
+            _name = name;
+            LOG_D("Scoped Task (%s) Created", _name.str());
         }
         
         ScopedTask(const ScopedTask& other) = delete;
@@ -213,8 +211,7 @@ namespace Bn3Monkey
             :
             _invoke(std::move(other._invoke))
         {
-            memcpy(_name, other._name, 256);
-            memset(other._name, 0, 256);
+            _name = other._name;
 
             memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
             memset(other._call_stack, 0, max_call_stack_size * 256);
@@ -228,8 +225,7 @@ namespace Bn3Monkey
         {
             _invoke = std::move(other._invoke);
 
-            memcpy(_name, other._name, 256);
-            memset(other._name, 0, 256);
+            _name = other._name;
 
             memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
             memset(other._call_stack, 0, max_call_stack_size * 256);
@@ -241,23 +237,23 @@ namespace Bn3Monkey
         }
 
         void clear() {
-            memset(_name, 0, 256);
+            _name.clear();
             memset(_call_stack, 0, max_call_stack_size * 256);
             _call_stack_size = 0;
             _invoke = nullptr;
         }
 
         void invoke() {
-            LOG_D("Scoped Task (%s) Invoked", _name);
+            LOG_D("Scoped Task (%s) Invoked", _name.str());
             _invoke(true);
         }
         void cancel() {
-            LOG_D("Scoped Task (%s) Cancelled", _name);
+            LOG_D("Scoped Task (%s) Cancelled", _name.str());
             _invoke(false);
         }
 
         const char* name() const {
-            return _name;
+            return _name.str();
         }
 
         bool isInStack(const char* target_scope_name)
@@ -312,9 +308,12 @@ namespace Bn3Monkey
 
             std::function<ReturnType()> onTaskRunning = std::bind(std::forward<Func>(func), std::forward<Args>(args)...);
 
-            auto* raw_ptr = ALLOC(ScopedTaskResultImpl<ReturnType>, _name);
-            auto result = MAKE_SHARED(ScopedTaskResultImpl<ReturnType>, raw_ptr);
-            
+            auto result = MAKE_SHARED(ScopedTaskResultImpl<ReturnType>, _name, _name);
+            if (!result)
+            {
+                LOG_E("Cannot make task result from task (%s)", _name.str());
+                return result;
+            }
             /*
             auto* raw_ptr = Bn3Monkey::Bn3MemoryPool::allocate_and_initialize<ScopedTaskResultImpl<ReturnType>>(_name);
             auto result = std::shared_ptr<ScopedTaskResultImpl<ReturnType>>(raw_ptr, [](ScopedTaskResultImpl<ReturnType>* ptr)
@@ -361,7 +360,7 @@ namespace Bn3Monkey
                 result->cancel();
         }
 
-        char _name[256]{ 0 };
+        Bn3Tag _name;
 
         constexpr static size_t max_call_stack_size = 20;
         char _call_stack[max_call_stack_size][256]{ 0 };

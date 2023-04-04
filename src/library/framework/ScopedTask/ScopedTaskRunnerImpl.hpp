@@ -41,18 +41,22 @@ namespace Bn3Monkey
     class ScopedTaskRunnerImpl
     {
     public:
-        bool initialize(std::function<void()> onClear);
+        bool initialize(
+            std::function<void()> onTimeout,
+            std::function<void()> onStop);
         void release();
-        bool start(ScopedTaskScopeImpl& task_scope);
-        bool stop(ScopedTaskScopeImpl& task_scope);
+        inline std::function<bool(ScopedTaskScopeImpl&)>& onStart() {
+            return _onStart;
+        }
 
     private:
+
+        bool start(ScopedTaskScopeImpl& task_scope);
+
         struct Request {
             ScopedTaskScopeImpl* scope {nullptr};
-            bool is_activated{false};
-            bool* is_done{ nullptr };
             Request() {}
-            Request(ScopedTaskScopeImpl* scope, bool is_activated, bool* is_done) : scope(scope), is_activated(is_activated), is_done(is_done) {}
+            Request(ScopedTaskScopeImpl* scope) : scope(scope) {}
         };
 
         std::thread _thread;
@@ -60,7 +64,10 @@ namespace Bn3Monkey
         bool _is_running;
         std::mutex _request_mtx;
         std::condition_variable _request_cv;
-        std::function<void()> _onClear;
+
+        std::function<bool(ScopedTaskScopeImpl&)> _onStart;
+        std::function<void()> _onTimeout;
+        std::function<void()> _onStop;
         void manager();
         
     };
