@@ -126,7 +126,7 @@ void test_dealloc_nullptr(bool value)
 
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
 	
-	Block<32>* ptr = nullptr;
+	Block<64>* ptr = nullptr;
 	Bn3MemoryPool::destroy(ptr);
 
 
@@ -144,11 +144,11 @@ void test_alloc_and_initialize(bool value)
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 4, 4);
 	
 	{
-		auto* ptr = Bn3MemoryPool::construct<Block<32>>(Bn3Tag("a_ptr"), 'a');
+		auto* ptr = Bn3MemoryPool::construct<Block<64>>(Bn3Tag("a_ptr"), 'a');
 		Bn3MemoryPool::destroy(ptr);
 	}
 	{
-		auto* ptr = Bn3MemoryPool::construct<Block<64>>(Bn3Tag("b_ptr"), 'b');
+		auto* ptr = Bn3MemoryPool::construct<Block<128>>(Bn3Tag("b_ptr"), 'b');
 		Bn3MemoryPool::destroy(ptr);
 	}
 	{
@@ -232,12 +232,26 @@ void test_allocator(bool value)
 
 	Bn3MemoryPool::initialize(4, 4, 4, 4, 4, 4, 256, 256);
 
-	constexpr static char vector_name[] = "vector1";
-	constexpr static char map_name[] = "map1";
+	{
+		std::vector<int> sans(Bn3Allocator<int>(Bn3Tag("sans")));
+		for (int i = 0; i < 256; i++)
+			sans.push_back(i);
+	}
+
+
+	{
+		Bn3Container::string tt{Bn3Allocator<char>(Bn3Tag("tt"))};
+		tt = "abcd";
+		tt = "abcdefghijklmnlakshdfklahsdfklahlksdfhlkasdhfklahsdfklahsdklfhaklsdfhlaksdhklasdhflkasdh";
+		tt.clear();
+		tt = "sans!!";
+		tt.append("papyrus!!");
+	}
 
 	
 	{
-		std::vector<int, Bn3Allocator<int, vector_name>> sans;
+		Bn3Container::vector<int> sans{Bn3Allocator<int>(Bn3Tag("sans"))};
+
 		sans.resize(15);
 		sans[0] = 1;
 		sans[1] = 2;
@@ -247,20 +261,34 @@ void test_allocator(bool value)
 		int b = sans[1];
 	}
 	{
-		std::unordered_map<std::string, int, std::hash<std::string>, std::equal_to<std::string>, Bn3Allocator<std::pair<const std::string, int>, map_name>> papyrus;
+		Bn3Container::map<int, int> papyrus{ Bn3Allocator<std::pair<const int, int>>(Bn3Tag("papyrus")) };
 		for (int i = 0; i < 128; i++)
 		{
-			std::stringstream ss;
-			ss << i;
-			papyrus[ss.str()] = i;
+			papyrus[i] = i;
+		}
+
+		Bn3Container::queue<Block<64>> undyne { Bn3Allocator<Block<64>>(Bn3Tag("undyne"))};
+		{
+			Block<64> a;
+			undyne.push(a);
+			undyne.push(a);
+			undyne.push(a);
+			undyne.push(a);
+			undyne.pop();
+			undyne.pop();
+			undyne.pop();
+			undyne.pop();
 		}
 	}
+	
 
 	Bn3MemoryPool::release();
 }
 
-void testMemoryPool()
+void testMemoryPool(bool value)
 {
+	if (!value)
+		return;
 	test_allocator(true);
 	test_sharedPtr(true);
 	test_alloc(true);

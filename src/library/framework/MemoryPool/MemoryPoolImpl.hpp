@@ -36,19 +36,21 @@ namespace Bn3Monkey
     constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 8192};
     constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
     constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
-    constexpr size_t HEADER_SIZE = 32;
+    constexpr size_t HEADER_SIZE = sizeof(unsigned int) + sizeof(int) + sizeof(void*) + sizeof(Bn3Tag);
 
     template<size_t BlockSize>
     struct Bn3MemoryBlock
     {
         constexpr static unsigned int MAGIC_NUMBER = 0xFEDCBA98;
-        struct alignas(16) Bn3MemoryHeader
+        struct Bn3MemoryHeader
         {
             const unsigned int dirty = 0xFEDCBA98;
-            bool is_allocated{ false };
-            Bn3MemoryBlock<BlockSize>* freed_ptr{nullptr};
             Bn3Tag tag;
+            int is_allocated{ false };
+            Bn3MemoryBlock<BlockSize>* freed_ptr{nullptr};
         };
+
+        static_assert(HEADER_SIZE == sizeof(Bn3MemoryHeader));
 
         constexpr static size_t size = BlockSize;
         constexpr static size_t header_size = sizeof(Bn3MemoryHeader);
@@ -356,6 +358,7 @@ namespace Bn3Monkey
 
                 ret->header.is_allocated = true;
                 ret->header.tag = tag;
+
             }
 
             auto* ptr = ret->content;
@@ -364,14 +367,17 @@ namespace Bn3Monkey
         }
         bool deallocate(void* ptr)
         {
-            auto* block_ptr = Bn3MemoryBlock<block_size>::getBlockReference(ptr);
-            if (block_ptr < front || back < block_ptr)
-            {
-                LOG_E("This reference (%p) is not from memory block pool (idx : %d / block size : %d)", ptr, 0, block_size);
-                return false;
-            }
+
             {
                 std::lock_guard<std::mutex> lock(mutex);
+
+                auto* block_ptr = Bn3MemoryBlock<block_size>::getBlockReference(ptr);
+                if (block_ptr < front || back < block_ptr)
+                {
+                    LOG_E("This reference (%p) is not from memory block pool (idx : %d / block size : %d)", ptr, 0, block_size);
+                    return false;
+                }
+
                 if (block_ptr->header.is_allocated == false)
                 {
                     LOG_E("This reference (%d) is already deallocated", block_ptr - front);
@@ -386,9 +392,10 @@ namespace Bn3Monkey
                 block_ptr->header.freed_ptr = freed_ptr;
                 freed_ptr = block_ptr;
 
-            }
 
-            LOG_D("Memory block pool (idx : %d / block size : %d) deallocates %d", 0, block_size, block_ptr - front);
+                LOG_D("Memory block pool (idx : %d / block size : %d) deallocates %d", 0, block_size, block_ptr - front);
+            
+            }
             return true;
         }
 

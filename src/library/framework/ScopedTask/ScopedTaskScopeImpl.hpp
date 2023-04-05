@@ -13,13 +13,14 @@
 #include <unordered_map>
 #include <cassert>
 
-#include "../Log/Log.hpp"
 
 #ifdef BN3MONKEY_DEBUG
 #define FOR_DEBUG(t) t
 #else 
 #define FOR_DEBUG(t)
 #endif
+
+#include "../Log/Log.hpp"
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
@@ -35,21 +36,54 @@
 #define LOG_E(text, ...)
 #endif
 
+#include "../MemoryPool/MemoryPool.hpp"
+
+#ifdef __BN3MONKEY_MEMORY_POOL__
+#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
+#define Bn3Queue(TYPE) Bn3Monkey::Bn3Container::queue<TYPE>
+#define Bn3Map(KEY, VALUE) Bn3Monkey::Bn3Container::map<KEY, VALUE>
+#define Bn3String() Bn3Monkey::Bn3Container::string
+#define Bn3Vector(TYPE) Bn3Monkey::Bn3Container::vector<TYPE>
+#define Bn3Deque(TYPE) Bn3Monkey::Bn3Container::deque<TYPE>
+
+#define Bn3QueueAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+#define Bn3MapAllocator(KEY, VALUE, TAG) Bn3Monkey::Bn3Allocator<std::pair<const KEY, VALUE>>(TAG)
+#define Bn3StringAllocator(TAG) Bn3Monkey::Bn3Allocator<char>(TAG)
+#define Bn3VectorAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+#define Bn3DequeAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+
+#else
+#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
+#define Bn3Queue(TYPE, TAG) std::queue<TYPE>
+#define Bn3Map(KEY, VALUE, TAG) std::unordered_map<KEY, VALUE>
+#define Bn3String(TAG) std::string
+#define Bn3Vector(TYPE, TAG) std::vector<TYPE>
+#define Bn3Deque(TYPE) std::deque<TYPE>
+
+#define Bn3QueueAllocator(TYPE, TAG) 
+#define Bn3MapAllocator(KEY, VALUE, TAG) 
+#define Bn3StringAllocator(TAG) 
+#define Bn3VectorAllocator(TYPE, TAG) 
+#define Bn3DequeAllocator(TYPE, TAG)
+#endif
+
 namespace Bn3Monkey
 {
     enum class ScopeState
     {
         IDLE = 0, // 할당된 작업 없으면 쓰레드도 동작하지 않음
-        EMPTY = 1, // 할당된 작업 없음
-        READY = 2, // 할당된 작업 있음
-        // RUNNING = 3, // 작업 중임
+        EMPTY = 2, // 할당된 작업 없음
+        RUNNING = 3, // 할당된 작업 있음
     };
+
+    class ScopedTaskScopeImplPool;
 
     class ScopedTaskScopeImpl
     {
     public:
+        friend class ScopedTaskScopeImplPool;
 
-        ScopedTaskScopeImpl(const char* scope_name,
+        ScopedTaskScopeImpl(const Bn3Tag& scope_name,
             std::function<bool(ScopedTaskScopeImpl&)> onStart,
             std::function<ScopedTaskScopeImpl*()> getCurrentScope);
 
@@ -59,7 +93,6 @@ namespace Bn3Monkey
        
 
         void start();
-        void timeout();
         void stop();
 
         template<class Func, class... Args>
@@ -110,19 +143,14 @@ namespace Bn3Monkey
                 auto& current_task = current_scope->_current_task;
                 if (current_task.isInStack(_name))
                 {
-                    LOG_E("This Task is already in scope (%s)", _name);
+                    LOG_E("This Task is already in scope (%s)", name());
                     assert(false);
 
                 }
 
                 // 새로운 작업에 현재 작업하고 있는 작업을 호출한 모든 스코프와 대상 스코프를 넣는다.
-                // 더 이상 스코프를 추가할 수 없으면 오류를 뱉는다.
-                auto* current_scope_name = current_scope->_name;
-                if (!task.addStack(current_task, current_scope_name))
-                {
-                    LOG_E("This Task cannot be added to scope (%s)", current_scope_name);
-                    assert(false);
-                }
+                auto& current_scope_name = current_scope->_name;
+                task.addStack(current_task, current_scope_name);
             }
             
             {
@@ -142,7 +170,7 @@ namespace Bn3Monkey
             return ret;
         }
 
-        inline const char* name() { return _name; }
+        inline const char* name() { return _name.str(); }
         inline ScopeState state() { return _state; }
         inline std::thread::id id() { return _id; }
 
@@ -150,23 +178,24 @@ namespace Bn3Monkey
         inline bool startScope(const ScopedTask& task) {
             if (ScopeState::IDLE == _state)
             {
-                LOG_D("Task %s starts scope (%s)", task.name(), _name);
+                LOG_D("Task %s starts scope (%s)", task.name(), name());
                 if (!_onStart(*this))
                 {
                     LOG_D("Request manager is stopped.\n");
                     return false;
                 }
+
                 std::mutex local_mtx;
                 std::unique_lock<std::mutex> lock(local_mtx);
                 _cv.wait(lock, [&]() {
-                    return ScopeState::EMPTY == _state;
+                    return _state == ScopeState::EMPTY;
                     });
             }
             return true;
         }
         inline void pushToScope(ScopedTask&& task) {
             if (_state == ScopeState::EMPTY)
-                _state = ScopeState::READY;
+                _state = ScopeState::RUNNING;
             _tasks.push(std::move(task));
         }
         
@@ -181,7 +210,7 @@ namespace Bn3Monkey
         void worker();
         
 
-        char _name[256]{ 0 };
+        Bn3Tag _name;
 
         std::function<ScopedTaskScopeImpl*()> _getCurrentScope;
         std::function<bool(ScopedTaskScopeImpl&)> _onStart;
@@ -191,7 +220,8 @@ namespace Bn3Monkey
 
         ScopeState _state{ ScopeState::IDLE };
         ScopedTask _current_task;
-        std::queue<ScopedTask> _tasks;
+
+        Bn3Queue(ScopedTask) _tasks; // allocated by bn3 allocator
         std::mutex _mtx;
         std::condition_variable _cv;
 
@@ -201,23 +231,19 @@ namespace Bn3Monkey
     {
     public:
         ScopedTaskScopeImplPool();
-        ScopedTaskScopeImpl* getScope(const char* scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart);
+        ScopedTaskScopeImpl& getScope(const Bn3Tag& scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart);
         ScopedTaskScopeImpl* getCurrentScope();
         
-        inline std::function<void()>& onTimeout() {
-            return _onTimeout;
-        }
         inline std::function<void()>& onClear() {
             return _onClear;
         }
 
     private:
-        void timeout();
         void clear();
 
-        std::function<void()> _onTimeout;
         std::function<void()> _onClear;
-        std::unordered_map<std::string, ScopedTaskScopeImpl> _scopes;
+        Bn3Deque(ScopedTaskScopeImpl) _scopes;
+
     };
 }
 

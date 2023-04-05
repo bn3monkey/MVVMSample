@@ -3,14 +3,13 @@
 
 using namespace Bn3Monkey;
 
-bool ScopedTaskRunnerImpl::initialize(std::function<void()> onTimeout, std::function<void()> onStop)
+bool ScopedTaskRunnerImpl::initialize(std::function<void()> onStop)
 {
     LOG_D("ScopedTaskRunner initializes");
 
     _onStart = [&](ScopedTaskScopeImpl& task_scope) {
         return start(task_scope);
     };
-    _onTimeout = onTimeout;
     _onStop = onStop;
     
     {
@@ -43,12 +42,13 @@ bool ScopedTaskRunnerImpl::start(ScopedTaskScopeImpl& task_scope)
             return false;
         }
 
-        _requests.emplace(&task_scope);
+        _requests.emplace(&task_scope, 1);
     }
 
     _request_cv.notify_all();
     return true;
 }
+
 
 void ScopedTaskRunnerImpl::manager()
 {
@@ -62,8 +62,7 @@ void ScopedTaskRunnerImpl::manager()
 
         {
             std::unique_lock<std::mutex> lock(_request_mtx);
-            using namespace std::chrono_literals;
-            bool is_timeout = _request_cv.wait_for(lock, 10s, [&]() {
+            _request_cv.wait(lock, [&]() {
                 return !_is_running || !_requests.empty();
                 });
             
@@ -71,28 +70,17 @@ void ScopedTaskRunnerImpl::manager()
             {
                 break;
             }
-            if (!is_timeout && _is_running)
-            {
-                start = false;
-            }
-            else
-            {
-                request = std::move(_requests.front());
-                _requests.pop();
-                start = true;
-            }
+            
+            request = std::move(_requests.front());
+            _requests.pop();
+            
         }
 
-        if (start)
+        if (request.request_num == 1)
         {
             LOG_D("Manager starts Worker (%s)", request.scope->name());
             request.scope->start();
         }
-        else {
-            LOG_D("Manager timeouts");
-            _onTimeout();
-        }
-
     }    
 
     LOG_D("Manager stop all workers\n");

@@ -2,6 +2,11 @@
 #define __BN3MONKEY_MEMORY_POOL__
 
 #include <memory>
+#include <vector>
+#include <deque>
+#include <queue>
+#include <unordered_map>
+#include <string>
 
 #include "MemoryPoolImpl.hpp"
 
@@ -76,7 +81,7 @@ namespace Bn3Monkey
 		return ret;
 	}
 
-	template<class Type, const char* TAG>
+	template<class Type>
 	class Bn3Allocator : public std::allocator<Type>
 	{
 	public:
@@ -90,25 +95,60 @@ namespace Bn3Monkey
 		using propagate_on_container_move_assignment = std::true_type;
 
 		Bn3Allocator() = default;
-		
+		Bn3Allocator(const Bn3Tag& tag)
+		{
+			_tag = tag;
+		}
+
 		template <typename U>
-		Bn3Allocator(const Bn3Allocator<U, TAG>& other) noexcept {}
+		Bn3Allocator(const Bn3Allocator<U>& other) noexcept : _tag(other._tag) {}
 
 		~Bn3Allocator() noexcept {}
 
 		template <class U>
 		struct rebind { 
-			using other = Bn3Allocator<U, TAG> ;
+			using other = Bn3Allocator<U> ;
 		};
 
 		pointer allocate(size_type n, const void* hint = 0)
 		{
-			return Bn3MemoryPool::allocate<value_type>(Bn3Tag(TAG), n);
+			return Bn3MemoryPool::allocate<value_type>(_tag, n);
 		}
 		void deallocate(pointer ptr, size_type n) noexcept {
 			Bn3MemoryPool::deallocate<value_type>(ptr, n);
 		}
+
+		template<class... Args>
+		void construct(pointer ptr, Args&&... values)
+		{
+			new (ptr) value_type(std::forward<Args>(values)...);
+		}
+		void destroy(pointer ptr)
+		{
+			ptr->~value_type();
+		}
+
+		Bn3Tag _tag;
 	};
+
+	class Bn3Container
+	{
+	public:
+		using string = std::basic_string<char, std::char_traits<char>, Bn3Allocator<char>>;
+
+		template<class Type>
+		using deque = std::deque<Type, Bn3Allocator<Type>>;
+
+		template<class Type>
+		using vector = std::vector<Type, Bn3Allocator<Type>>;
+
+		template<class Type>
+		using queue = std::queue<Type, std::deque<Type, Bn3Allocator<Type>>>;
+
+		template<class Key, class Value>
+		using map = std::unordered_map<Key, Value, std::hash<Key>, std::equal_to<Key>, Bn3Allocator<std::pair<const Key, Value>>>;
+	};
+
 }
 
 #endif

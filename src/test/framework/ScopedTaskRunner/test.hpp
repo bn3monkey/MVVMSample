@@ -15,9 +15,9 @@ void test_run(bool value)
 
 	ScopedTaskRunner().initialize();
 
-	auto main = ScopedTaskScope("main");
-	auto device = ScopedTaskScope("device");
-	auto ip = ScopedTaskScope("ip");
+	auto main = ScopedTaskScope(Bn3Tag("main"));
+	auto device = ScopedTaskScope(Bn3Tag("device"));
+	auto ip = ScopedTaskScope(Bn3Tag("ip"));
 
 	main.run(Bn3Tag("main1"), [&]() {
 		say("Main1");
@@ -107,9 +107,9 @@ void test_runCancelled(bool value)
 
 		ScopedTaskRunner().initialize();
 
-		auto main = ScopedTaskScope("main");
-		auto device = ScopedTaskScope("device");
-		auto ip = ScopedTaskScope("ip");
+		auto main = ScopedTaskScope(Bn3Tag("main"));
+		auto device = ScopedTaskScope(Bn3Tag("device"));
+		auto ip = ScopedTaskScope(Bn3Tag("ip"));
 
 		main.run(Bn3Tag("(1) main"), [&]() {
 			device.run(Bn3Tag("(2) device"), [&]() {
@@ -165,10 +165,10 @@ void test_call(bool value)
 
 	ScopedTaskRunner().initialize();
 
-	auto main = ScopedTaskScope("main");
-	auto device = ScopedTaskScope("device");
-	auto ip = ScopedTaskScope("ip");
-	auto ui = ScopedTaskScope("ui");
+	auto main = ScopedTaskScope(Bn3Tag("main"));
+	auto device = ScopedTaskScope(Bn3Tag("device"));
+	auto ip = ScopedTaskScope(Bn3Tag("ip"));
+	auto ui = ScopedTaskScope(Bn3Tag("ui"));
 
 	std::vector<ScopedTaskResult<int>> tasks;
 
@@ -299,8 +299,10 @@ void test_call(bool value)
  	ScopedTaskRunner().release();
 }
 
-void testScopedTaskRunner()
+void testScopedTaskRunner(bool value)
 {
+	if (!value)
+		return;
 
 	Bn3Monkey::Bn3MemoryPool::initialize(32, 32, 32, 32, 32, 32, 32, 32);
 

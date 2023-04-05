@@ -36,7 +36,7 @@ namespace Bn3Monkey
 		ScopedTaskScopeImpl _scope;
 		std::function<void()> _task;
 
-		std::chrono::duration<long long, std::chrono::microseconds> _interval;
+		// std::chrono::duration<long long, std::chrono::microseconds> _interval;
 
 		std::function<void(ScopedTaskLooperImpl&)> _onAdd;
 		std::function<void(ScopedTaskLooperImpl&)> _onRemove;
@@ -79,8 +79,8 @@ namespace Bn3Monkey
 		std::function<void(ScopedTaskLooperImpl&)> _onAdd;
 		std::function<void(ScopedTaskLooperImpl&)> _onRemove;
 
-		std::vector<ScopedTask> _loopers;
-		std::vector<ScopedTask&> _activated_loopers;
+		// std::vector<ScopedTask> _loopers;
+		// std::vector<ScopedTask&> _activated_loopers;
 
 		bool _is_running;
 		std::mutex _mtx;

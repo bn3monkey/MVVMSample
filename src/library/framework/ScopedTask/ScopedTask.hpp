@@ -41,7 +41,7 @@ namespace Bn3Monkey
     class ScopedTaskScope
     {
     public:
-        ScopedTaskScope(const char* scope_name);
+        ScopedTaskScope(const Bn3Tag& scope_name);
 
         template<class Func, class... Args>
         void run(const Bn3Tag& task_name, Func&& func, Args&&... args)
@@ -60,7 +60,7 @@ namespace Bn3Monkey
 
 
     private:
-        ScopedTaskScopeImpl& getScope(const char* scope_name);
+        ScopedTaskScopeImpl& getScope(const Bn3Tag& scope_name);
         ScopedTaskScopeImpl& _impl;
     };
 

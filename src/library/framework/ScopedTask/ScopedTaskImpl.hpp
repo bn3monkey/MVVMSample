@@ -9,13 +9,14 @@
 #include <queue>
 #include <cassert>
 
-#include "../Log/Log.hpp"
 
 #ifdef BN3MONKEY_DEBUG
 #define FOR_DEBUG(t) t
 #else 
 #define FOR_DEBUG(t)
 #endif
+
+#include "../Log/Log.hpp"
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
@@ -31,13 +32,35 @@
 #define LOG_E(text, ...)
 #endif
 
-
 #include "../MemoryPool/MemoryPool.hpp"
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
-#define MAKE_SHARED(TYPE, NAME, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(Bn3Monkey::Bn3Tag(NAME), __VA_ARGS__)
+#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
+#define Bn3Queue(TYPE) Bn3Monkey::Bn3Container::queue<TYPE>
+#define Bn3Map(KEY, VALUE) Bn3Monkey::Bn3Container::map<KEY, VALUE>
+#define Bn3String() Bn3Monkey::Bn3Container::string
+#define Bn3Vector(TYPE) Bn3Monkey::Bn3Container::vector<TYPE>
+#define Bn3Deque(TYPE) Bn3Monkey::Bn3Container::deque<TYPE>
+
+#define Bn3QueueAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+#define Bn3MapAllocator(KEY, VALUE, TAG) Bn3Monkey::Bn3Allocator<std::pair<const KEY, VALUE>>(TAG)
+#define Bn3StringAllocator(TAG) Bn3Monkey::Bn3Allocator<char>(TAG)
+#define Bn3VectorAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+#define Bn3DequeAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
+
 #else
-#define MAKE_SHARED(TYPE, NAME, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
+#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
+#define Bn3Queue(TYPE, TAG) std::queue<TYPE>
+#define Bn3Map(KEY, VALUE, TAG) std::unordered_map<KEY, VALUE>
+#define Bn3String(TAG) std::string
+#define Bn3Vector(TYPE, TAG) std::vector<TYPE>
+#define Bn3Deque(TYPE) std::deque<TYPE>
+
+#define Bn3QueueAllocator(TYPE, TAG) 
+#define Bn3MapAllocator(KEY, VALUE, TAG) 
+#define Bn3StringAllocator(TAG) 
+#define Bn3VectorAllocator(TYPE, TAG) 
+#define Bn3DequeAllocator(TYPE, TAG)
 #endif
 
 namespace Bn3Monkey
@@ -202,6 +225,7 @@ namespace Bn3Monkey
         ScopedTask(const Bn3Tag& name)
         {
             _name = name;
+            _call_stack = Bn3Vector(Bn3Tag) { Bn3VectorAllocator(Bn3Tag, Bn3Tag("stack_", name)) };
             LOG_D("Scoped Task (%s) Created", _name.str());
         }
         
@@ -209,38 +233,27 @@ namespace Bn3Monkey
         
         ScopedTask(ScopedTask&& other)
             :
-            _invoke(std::move(other._invoke))
-        {
-            _name = other._name;
-
-            memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
-            memset(other._call_stack, 0, max_call_stack_size * 256);
-            
-            _call_stack_size = other._call_stack_size;
-
-            LOG_D("Scoped Task (%s) Moved", _name);
+            _name(other._name),
+            _invoke(std::move(other._invoke)),
+            _call_stack(std::move(other._call_stack))
+        {            
+            LOG_D("Scoped Task (%s) Moved", _name.str());
         }
 
         ScopedTask& operator=(ScopedTask&& other)
         {
+            _name = std::move(other._name);
             _invoke = std::move(other._invoke);
-
-            _name = other._name;
-
-            memcpy(_call_stack, other._call_stack, max_call_stack_size * 256);
-            memset(other._call_stack, 0, max_call_stack_size * 256);
-
-            _call_stack_size = other._call_stack_size;
-
-            LOG_D("Scoped Task (%s) Moved", _name);
+            _call_stack = std::move(other._call_stack);
+            
+            LOG_D("Scoped Task (%s) Moved", _name.str());
             return *this;
         }
 
         void clear() {
             _name.clear();
-            memset(_call_stack, 0, max_call_stack_size * 256);
-            _call_stack_size = 0;
             _invoke = nullptr;
+            _call_stack.clear();
         }
 
         void invoke() {
@@ -256,49 +269,28 @@ namespace Bn3Monkey
             return _name.str();
         }
 
-        bool isInStack(const char* target_scope_name)
+        bool isInStack(const Bn3Tag& target_scope_name)
         {
-            for (size_t i = 0; i < _call_stack_size; i++)
+            for (auto& scope_name : _call_stack)
             {
-                if (!strncmp(_call_stack[i], target_scope_name, 256))
+                if (scope_name == target_scope_name)
                 {
-                    LOG_D("Stack (%d) has scope (%s)", i + 1, target_scope_name);
+                    LOG_D("Task (%s) call stack has scope (%s)", _name.str(), target_scope_name.str());
                     return true;
                 }
             }
             return false;
         }
-        bool addStack(ScopedTask& calling_task, const char* scope_name)
+        void addStack(ScopedTask& calling_task, const Bn3Tag& scope_name)
         {
             // 이 Task를 호출한 태스크의 콜스택에 이 Task가 수행되는 Scope를 추가하여 콜스택을 갱신함
  
             // 콜 스택 안에 중복된 스코프를 호출하면 안되도록 해야함.
             // 상호 대기가 될 수 있음
 
-            auto* super_call_stack = calling_task._call_stack;
-            size_t super_call_stack_size = calling_task._call_stack_size;
-            
-            _call_stack_size = calling_task._call_stack_size + 1;
-            if (_call_stack_size > max_call_stack_size)
-            {
-                LOG_D("Call stack size is over than max call stack size");
-                return false;
-            }
-
-            for (size_t i = 0; i < super_call_stack_size; i++)
-            {
-#ifdef _WIN32
-                strncpy_s(_call_stack[i], super_call_stack[i], 256);
-#else
-                strncpy(_call_stack[i], super_call_stack[i], 256);
-#endif
-            }
-#ifdef _WIN32
-            strncpy_s(_call_stack[super_call_stack_size], scope_name, 256);
-#else
-            strncpy(_call_stack[super_call_stack_size], scope_name, 256);
-#endif
-            return true;
+            auto& super_call_stack = calling_task._call_stack;
+            _call_stack.insert(_call_stack.end(), super_call_stack.begin(), super_call_stack.end());
+            _call_stack.push_back(scope_name);
         }
 
         template<class Func, class... Args>
@@ -314,13 +306,6 @@ namespace Bn3Monkey
                 LOG_E("Cannot make task result from task (%s)", _name.str());
                 return result;
             }
-            /*
-            auto* raw_ptr = Bn3Monkey::Bn3MemoryPool::allocate_and_initialize<ScopedTaskResultImpl<ReturnType>>(_name);
-            auto result = std::shared_ptr<ScopedTaskResultImpl<ReturnType>>(raw_ptr, [](ScopedTaskResultImpl<ReturnType>* ptr)
-                {
-                    Bn3Monkey::Bn3MemoryPool::deallocate(ptr);
-                });
-                */
 
             auto wresult = std::weak_ptr<ScopedTaskResultImpl<ReturnType>>(result);
            
@@ -361,11 +346,8 @@ namespace Bn3Monkey
         }
 
         Bn3Tag _name;
-
-        constexpr static size_t max_call_stack_size = 20;
-        char _call_stack[max_call_stack_size][256]{ 0 };
-        size_t _call_stack_size = 0;
-              
+                
+        Bn3Vector(Bn3Tag) _call_stack;
 
         std::function<void(bool)> _invoke;
     };

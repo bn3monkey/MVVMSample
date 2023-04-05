@@ -2,54 +2,42 @@
 
 using namespace Bn3Monkey;
 
-ScopedTaskRunnerImpl* runner{ nullptr };
-ScopedTaskScopeImplPool* scope_pool{nullptr};
+std::shared_ptr<ScopedTaskRunnerImpl> runner;
+std::shared_ptr<ScopedTaskScopeImplPool> scope_pool;
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
-#define ALLOC(TYPE, TAG) Bn3Monkey::Bn3MemoryPool::construct<TYPE>(TAG)
-#define DEALLOC(PTR) Bn3Monkey::Bn3MemoryPool::destroy(PTR)
+#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
 #else
-#define ALLOC(TYPE, TAG) new TYPE()
-#define DEALLOC(PTR) delete PTR
+#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
 #endif
 
 
 
-
-ScopedTaskScopeImpl& ScopedTaskScope::getScope(const char* scope_name)
+ScopedTaskScopeImpl& ScopedTaskScope::getScope(const Bn3Tag& scope_name)
 {
     assert(scope_pool != nullptr);
 
-    auto* ret = scope_pool->getScope(scope_name, 
+    auto& ret = scope_pool->getScope(scope_name, 
         // onStart
         runner->onStart()
     );
-    return *ret;
+    return ret;
 }
-ScopedTaskScope::ScopedTaskScope(const char* scope_name) : _impl(getScope(scope_name))
+ScopedTaskScope::ScopedTaskScope(const Bn3Tag& scope_name) : _impl(getScope(scope_name))
 {
 }
 
 bool ScopedTaskRunner::initialize()
 {
-    if (scope_pool == nullptr)
-        scope_pool = ALLOC(ScopedTaskScopeImplPool, Bn3Tag("TaskScopePool"));
-    if (runner == nullptr)
-        runner = ALLOC(ScopedTaskRunnerImpl, Bn3Tag("TaskRunner"));
+    scope_pool = MAKE_SHARED(ScopedTaskScopeImplPool, Bn3Tag("global_scope_pools"));
+    runner = MAKE_SHARED(ScopedTaskRunnerImpl, Bn3Tag("global_task_runner"));
 
-    return runner->initialize(scope_pool->onTimeout(), scope_pool->onClear());
+    return runner->initialize( scope_pool->onClear());
 }
 void ScopedTaskRunner::release()
 {
     runner->release();
-    if (scope_pool != nullptr)
-    {
-        DEALLOC(scope_pool);
-        scope_pool = nullptr;
-    }
-    if (runner != nullptr)
-    {
-        DEALLOC(runner);
-        runner = nullptr;
-    }
+    
+    scope_pool.reset();
+    runner.reset();
 }

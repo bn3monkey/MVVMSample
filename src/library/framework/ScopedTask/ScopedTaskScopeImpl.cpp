@@ -3,17 +3,20 @@
 
 using namespace Bn3Monkey;
 
-ScopedTaskScopeImpl::ScopedTaskScopeImpl(const char* scope_name,
+ScopedTaskScopeImpl::ScopedTaskScopeImpl(const Bn3Tag& scope_name,
     std::function<bool(ScopedTaskScopeImpl&)> onStart,
     std::function<ScopedTaskScopeImpl*()> getCurrentScope) :
+    _name(scope_name),
     _onStart(onStart),
     _getCurrentScope(getCurrentScope)
 {
-    memcpy(_name, scope_name, 256);
+    _tasks = Bn3Queue(ScopedTask) { Bn3QueueAllocator(ScopedTask, Bn3Tag("tasks_", _name)) };
 }
 
 ScopedTaskScopeImpl::ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other)
-    : _onStart(std::move(other._onStart)),
+    : 
+      _name(other._name),
+      _onStart(std::move(other._onStart)),
       _getCurrentScope(std::move(other._getCurrentScope)),
       _thread(std::move(other._thread)),
       _id(std::move(other._id)),
@@ -21,8 +24,7 @@ ScopedTaskScopeImpl::ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other)
       _current_task(std::move(other._current_task)),
       _tasks(std::move(other._tasks))
 {
-    memcpy(_name, other._name, 256);
-    memset(other._name, 0, 256);
+
 }
 
 ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
@@ -31,58 +33,13 @@ ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
 
 void ScopedTaskScopeImpl::start()
 {
-    LOG_D("Scope (%s) Starts", _name);
-    
-    // Because atomicity is guaranteed when running or calling from outside, _mtx is not locked.
-    if (_state == ScopeState::IDLE)
-    {
-        _state = ScopeState::EMPTY;
-        _thread = std::thread([&]() {worker(); });
-    }
-    else
-    {
-        LOG_E("Scope (%s) is already started", _name);
-        assert(true);
-    }
+    LOG_D("Scope (%s) starts", _name.str());
+    _thread = std::thread([&]() {worker(); });
 }
-void ScopedTaskScopeImpl::timeout()
-{
-    LOG_D("Scope (%s) Timeouts", _name);
 
-    bool is_stopped{ false };
-    {
-        std::unique_lock<std::mutex> lock(_mtx);
-        if (ScopeState::EMPTY == _state)
-        {
-            _state = ScopeState::IDLE;
-            is_stopped = true;
-        }
-    }
-        /*
-        if (_mtx.try_lock())
-        {
-            if (ScopeState::EMPTY == _state)
-            {
-                _state = ScopeState::IDLE;
-                _thread.join();
-                _mtx.unlock();
-            }
-        }
-        else
-        {
-            LOG_D("Scope (%s) timeouts but scope is being used", _name);
-        }
-        */
-
-    if (is_stopped)
-    {
-        _cv.notify_all();
-        _thread.join();
-    }
-}
 void ScopedTaskScopeImpl::stop()
 {
-    LOG_D("Scope %s Ends", _name);
+    LOG_D("Scope (%s) stops", _name.str());
     
     bool is_stopped{ false };
     {
@@ -103,13 +60,13 @@ void ScopedTaskScopeImpl::stop()
 
 void ScopedTaskScopeImpl::worker()
 {
-    LOG_D("Worker (%s) Start", _name);
+    LOG_D("Worker (%s) Start", _name.str());
     std::string thread_name = "scope ";
-    thread_name += _name;
+    thread_name += _name.str();
     setThreadName(thread_name.c_str());
 
     _id = std::this_thread::get_id();
-
+    _state = ScopeState::EMPTY;
     _cv.notify_all();
 
     for (;;)
@@ -122,17 +79,17 @@ void ScopedTaskScopeImpl::worker()
             _cv.wait(lock, [&]() {
                 return _state != ScopeState::EMPTY;
                 });
-            
+
             if (_state == ScopeState::IDLE)
             {
-                LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name);
+                LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name.str());
                 while (!_tasks.empty())
                 {
                     _current_task = std::move(_tasks.front());
                     _tasks.pop();
                     _current_task.cancel();
                 }
-                LOG_D("Worker (%s) Ends", _name);
+                LOG_D("Worker (%s) Ends", _name.str());
                 break;
             }
 
@@ -143,65 +100,56 @@ void ScopedTaskScopeImpl::worker()
             if (_tasks.empty())
             {
                 _state = ScopeState::EMPTY;
-                LOG_D("Scope(%s) - Tasks empty", _name);
+                LOG_D("Scope(%s) - Tasks empty", _name.str());
             }
             else
             {
-                _state = ScopeState::READY;
-                LOG_D("Scope(%s) - Tasks remained", _name);
+                _state = ScopeState::RUNNING;
+                LOG_D("Scope(%s) - Tasks remained", _name.str());
             }
         }
 
-        LOG_D("Scope(%s) - Tasks(%s) start", _name, _current_task.name());
+        LOG_D("Scope(%s) - Tasks(%s) start", _name.str(), _current_task.name());
         _current_task.invoke();
-        LOG_D("Scope(%s) - Tasks(%s) ends", _name, _current_task.name());
+        LOG_D("Scope(%s) - Tasks(%s) ends", _name.str(), _current_task.name());
     }
 }
 
 /***********************************************/
 ScopedTaskScopeImplPool::ScopedTaskScopeImplPool()
 {
-    _onTimeout = [&]() {timeout(); };
     _onClear = [&]() {clear(); };
+    _scopes = Bn3Deque(ScopedTaskScopeImpl) { Bn3DequeAllocator(ScopedTaskScopeImpl, Bn3Tag("scopes")) };
 }
 
-ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getScope(const char* scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart)
+ScopedTaskScopeImpl& ScopedTaskScopeImplPool::getScope(const Bn3Tag& scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart)
 {
-    auto iter = _scopes.find(scope_name);
-    if (iter != _scopes.end())
+    for (auto& scope : _scopes)
     {
-        return &(iter->second);
+        if (scope._name == scope_name)
+            return scope;
     }
 
     auto temp_getCurrentScope = [&]() {
         return getCurrentScope();
     };
 
-    _scopes.emplace(scope_name, ScopedTaskScopeImpl(scope_name, onStart, temp_getCurrentScope));
-    auto& ret = _scopes.at(scope_name);
-    return &ret;
+    _scopes.emplace_back(scope_name, onStart, temp_getCurrentScope);
+    return _scopes.back();
 }
 ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getCurrentScope() {
     auto id = std::this_thread::get_id();
-    for (auto& iter : _scopes) {
-        if (id == iter.second.id())
-            return &(iter.second);
+    for (auto& scope : _scopes)
+    {
+        if (id == scope._id)
+            return &scope;
     }
     return nullptr;
 }
-void ScopedTaskScopeImplPool::timeout()
-{
-    for (auto& iter : _scopes)
-    {
-        auto& scope = iter.second;
-        scope.timeout();
-    }
-}
 void ScopedTaskScopeImplPool::clear()
 {
-    for (auto& iter : _scopes)
+    for (auto& scope : _scopes)
     {
-        auto& scope = iter.second;
         scope.stop();
     }
     _scopes.clear();
