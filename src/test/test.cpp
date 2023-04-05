@@ -2,12 +2,10 @@
 #include "framework/ScopedTaskRunner/test.hpp"
 
 
-void main()
+int main()
 {
-    
-
     testMemoryPool(false);
     testScopedTaskRunner(true);
     
-    return;
+    return 0;
 }

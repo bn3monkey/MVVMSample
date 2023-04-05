@@ -55,20 +55,7 @@ namespace Bn3Monkey
 			clear();
 			const char* value = other.name;
 			size_t length = strlen(value);
-
-			printf("Double Access check : %s (%p)\n", other.name, name);
-			for (size_t i = 0; i < length; i++)
-			{
-				printf("Copy %d index (%p)\n", i, name);
-				if (i != length - 1)
-				{
-					if (name[i + 1] != 0)
-					{
-						printf("<%p> Check!\n", name);
-					}
-				}
-				name[i] = other.name[i];
-			}
+			std::copy(value, value + length, name);
 
 			return *this;
 		}
@@ -78,11 +65,11 @@ namespace Bn3Monkey
 			return !strcmp(name, other.name);
 		}
 
-		inline void clear() { memset(name, 0, sizeof(TAG_SIZE)); }
+		inline void clear() { memset(name, 0, sizeof(name)); }
 		inline const char* str() const { return name; }
 
 	private:
-		volatile char name[TAG_SIZE]{ 0 };
+		char name[TAG_SIZE]{ 0 };
 	};
 }
 

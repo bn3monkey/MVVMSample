@@ -313,6 +313,8 @@ void testScopedTaskRunner(bool value)
 		test_call(true);
 	}
 
-	printf("%s\n", analyzer.analyze().c_str());
+	printf("%s\n", analyzer.analyzeAll().c_str());
+	printf("%s\n", analyzer.analyzePool(0).c_str());
+
 	Bn3Monkey::Bn3MemoryPool::release();
 }

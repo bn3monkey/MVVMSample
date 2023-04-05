@@ -31,8 +31,10 @@
 #define LOG_E(text, ...)
 #endif
 
+
 namespace Bn3Monkey
 {
+    
     constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 8192};
     constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
     constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
@@ -540,23 +542,29 @@ namespace Bn3Monkey
 
 
 
-        std::string analysis()
+        std::string analyzeAll()
         {
-            return analysisPool<pool_size - 1>();
+            std::stringstream ss;
+            analyzeRecursive<pool_size - 1>(ss);
+            return ss.str();
+        }
+        template<size_t idx>
+        std::string analyzePool()
+        {
+            auto ret = reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->analysis();
+            return ret;
         }
 
     private:
         template<size_t idx>
-        std::string analysisPool() {
-            std::stringstream ss;
-            ss << analysisPool<idx - 1>();
-            ss << reinterpret_cast<Bn3MemoryBlockPool<idx>*>(this)->analysis();
-            return ss.str();
+        void analyzeRecursive(std::stringstream& ss) {
+            analyzeRecursive<idx - 1>(ss);
+            ss << analyzePool<idx>();
         }
 
         template<>
-        std::string analysisPool<0>() {
-            return reinterpret_cast<Bn3MemoryBlockPool<0>*>(this)->analysis();
+        void analyzeRecursive<0>(std::stringstream& ss) {
+            ss << analyzePool<0>();
         }
 
         std::function<void* (const Bn3Tag& tag)> allocators[pool_size];

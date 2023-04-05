@@ -59,8 +59,28 @@ namespace Bn3Monkey
 		class Analyzer
 		{
 		public:
-			std::string analyze() {
-				return _impl.analysis();
+			std::string analyzeAll() {
+				return _impl.analyzeAll();
+			}
+			
+			std::string analyzePool(size_t i) {
+				if (i == 0)
+					return _impl.analyzePool<0>();
+				else if (i == 1)
+					return _impl.analyzePool<1>();
+				else if (i == 2)
+					return _impl.analyzePool<2>();
+				else if (i == 3)
+					return _impl.analyzePool<3>();
+				else if (i == 4)
+					return _impl.analyzePool<4>();
+				else if (i == 5)
+					return _impl.analyzePool<5>();
+				else if (i == 6)
+					return _impl.analyzePool<6>();
+				else if (i == 7)
+					return _impl.analyzePool<7>();
+				return std::string();
 			}
 		};
 
