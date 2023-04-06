@@ -13,6 +13,7 @@ namespace Bn3Monkey
     template<class ReturnType>
     class ScopedTaskResult;
     class ScopedTaskScope;
+    class ScopedTaskLooper;
     class ScopedTaskRunner;
 
 
@@ -41,6 +42,8 @@ namespace Bn3Monkey
     class ScopedTaskScope
     {
     public:
+        friend class ScopedTaskLooper;
+
         ScopedTaskScope(const Bn3Tag& scope_name);
 
         template<class Func, class... Args>
@@ -68,12 +71,34 @@ namespace Bn3Monkey
     class ScopedTaskLooper
     {
     public:
-        ScopedTaskLooper(const ScopedTaskScope& scope, std::function<void()> task);
-        void start();
-        void stop();
+        ScopedTaskLooper(const Bn3Tag& looper_name);
+        
+        template<class Func, class ...Args>
+        void start(std::chrono::microseconds interval, const ScopedTaskScope& scope, Func&& func ,Args&&... args)
+        {
+            _impl.start(interval, scope._impl, std::forward<Func>(func), std::forward<Args>(args)...);
+        }
+        
+        template<class Func, class ...Args>
+        void start(std::chrono::milliseconds interval, const ScopedTaskScope& scope, Func&& func, Args&&... args)
+        {
+            _impl.start(interval, scope._impl, std::forward<Func>(func), std::forward<Args>(args)...);
+        }
+
+        template<class Func, class... Args>
+        void start(std::chrono::seconds interval, const ScopedTaskScope& scope, Func&& func, Args&&... args)
+        {
+            _impl.start(interval, scope._impl, std::forward<Func>(func), std::forward<Args>(args)...);
+        }
+
+        void stop()
+        {
+            _impl.stop();
+        }
 
     private:
-        ScopedTaskLooperImpl _impl;
+        ScopedTaskLooperImpl& getScope(const Bn3Tag& looper_name);
+        ScopedTaskLooperImpl& _impl;
     };
     */
 

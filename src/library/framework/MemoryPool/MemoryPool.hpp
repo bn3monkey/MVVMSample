@@ -2,6 +2,7 @@
 #define __BN3MONKEY_MEMORY_POOL__
 
 #include <memory>
+#include <list>
 #include <vector>
 #include <deque>
 #include <queue>
@@ -155,6 +156,9 @@ namespace Bn3Monkey
 	{
 	public:
 		using string = std::basic_string<char, std::char_traits<char>, Bn3Allocator<char>>;
+
+		template<class Type>
+		using list = std::list<Type, Bn3Allocator<Type>>;
 
 		template<class Type>
 		using deque = std::deque<Type, Bn3Allocator<Type>>;
