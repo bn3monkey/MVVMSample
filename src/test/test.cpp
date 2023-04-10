@@ -4,7 +4,7 @@
 
 int main()
 {
-    testMemoryPool(true);
+    testMemoryPool(false);
     testScopedTaskRunner(true);
     
     return 0;

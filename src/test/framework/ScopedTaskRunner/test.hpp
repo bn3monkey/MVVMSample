@@ -299,12 +299,93 @@ void test_call(bool value)
  	ScopedTaskRunner().release();
 }
 
+void test_looper(bool value)
+{
+	if (!value)
+		return;
+
+	say("Looper TEST");
+
+	using namespace Bn3Monkey;
+
+	ScopedTaskRunner().initialize();
+
+	ScopedTaskLooper looper1(Bn3Tag("10ms"));
+	ScopedTaskLooper looper2(Bn3Tag("50ms"));
+	ScopedTaskLooper looper3(Bn3Tag("100ms"));
+	ScopedTaskLooper looper4(Bn3Tag("500ms"));
+	ScopedTaskLooper looper5(Bn3Tag("1s"));
+
+	auto main = ScopedTaskScope(Bn3Tag("main"));
+	auto device = ScopedTaskScope(Bn3Tag("device"));
+	auto ip = ScopedTaskScope(Bn3Tag("ip"));
+
+	std::mutex mtx;
+	long long int time = 0;
+
+	std::vector<std::chrono::milliseconds> times[5];
+
+	using namespace std::chrono_literals;
+	looper1.start(1s, main, [&]() {
+		{
+			static std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();
+			auto duration = std::chrono::steady_clock::now() - prev_time;
+			std::chrono::milliseconds duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+			times[0].push_back(duration_ms);
+		}
+		});
+	looper2.start(2s, main, [&]() {
+		{
+			static std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();
+			auto duration = std::chrono::steady_clock::now() - prev_time;
+			std::chrono::milliseconds duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+			times[1].push_back(duration_ms);
+		}
+		});
+	looper3.start(3s, device, [&]() {
+		{
+			static std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();
+			auto duration = std::chrono::steady_clock::now() - prev_time;
+			std::chrono::milliseconds duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+			times[2].push_back(duration_ms);
+		}
+		});
+	looper4.start(4s, ip, [&]() {
+		{
+			static std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();
+			auto duration = std::chrono::steady_clock::now() - prev_time;
+			std::chrono::milliseconds duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+			times[3].push_back(duration_ms);
+		}
+		});
+	looper5.start(5s, main, [&]() {
+		{
+			static std::chrono::steady_clock::time_point prev_time = std::chrono::steady_clock::now();
+			auto duration = std::chrono::steady_clock::now() - prev_time;
+			std::chrono::milliseconds duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
+			times[4].push_back(duration_ms);
+		}
+		});
+
+	std::this_thread::sleep_for(10s);
+
+	looper1.stop();
+	looper2.stop();
+	looper3.stop();
+	looper4.stop();
+	looper5.stop();
+
+	ScopedTaskRunner().release();
+}
+
 void testScopedTaskRunner(bool value)
 {
 	if (!value)
 		return;
 
-	Bn3Monkey::Bn3MemoryPool::initialize({ 32, 32, 32, 32, 32, 32, 32, 32 });
+	Bn3Monkey::Bn3MemoryPool::initialize({ 32, 32, 128, 32, 32, 32, 32, 32 });
+
+	test_looper(true);
 
 	for (size_t i = 0; i < 100; i++)
 	{

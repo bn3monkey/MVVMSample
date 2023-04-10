@@ -5,7 +5,7 @@
 
 #include "ScopedTaskImpl.hpp"
 #include "ScopedTaskScopeImpl.hpp"
-#include "ScopedTaskRunnerImpl.hpp"
+#include "ScopedTaskLooperImpl.hpp"
 
 
 namespace Bn3Monkey
@@ -67,7 +67,6 @@ namespace Bn3Monkey
         ScopedTaskScopeImpl& _impl;
     };
 
-    /*
     class ScopedTaskLooper
     {
     public:
@@ -97,10 +96,9 @@ namespace Bn3Monkey
         }
 
     private:
-        ScopedTaskLooperImpl& getScope(const Bn3Tag& looper_name);
+        ScopedTaskLooperImpl& getLooper(const Bn3Tag& looper_name);
         ScopedTaskLooperImpl& _impl;
     };
-    */
 
     class ScopedTaskRunner
     {

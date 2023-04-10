@@ -2,8 +2,8 @@
 
 using namespace Bn3Monkey;
 
-std::shared_ptr<ScopedTaskRunnerImpl> runner;
 std::shared_ptr<ScopedTaskScopeImplPool> scope_pool;
+std::shared_ptr<ScopedTaskLooperScheduler> looper_scheduler;
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
 #define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
@@ -17,27 +17,43 @@ ScopedTaskScopeImpl& ScopedTaskScope::getScope(const Bn3Tag& scope_name)
 {
     assert(scope_pool != nullptr);
 
-    auto& ret = scope_pool->getScope(scope_name, 
-        // onStart
-        runner->onStart()
-    );
+    auto& ret = scope_pool->getScope(scope_name);
     return ret;
 }
 ScopedTaskScope::ScopedTaskScope(const Bn3Tag& scope_name) : _impl(getScope(scope_name))
 {
 }
 
+ScopedTaskLooperImpl& ScopedTaskLooper::getLooper(const Bn3Tag& looper_name)
+{
+    assert(looper_scheduler != nullptr);
+
+    auto& ret = looper_scheduler->getLooper(looper_name);
+    return ret;
+}
+ScopedTaskLooper::ScopedTaskLooper(const Bn3Tag& looper_name) : _impl(getLooper(looper_name))
+{
+
+}
+
 bool ScopedTaskRunner::initialize()
 {
     scope_pool = MAKE_SHARED(ScopedTaskScopeImplPool, Bn3Tag("global_scope_pools"));
-    runner = MAKE_SHARED(ScopedTaskRunnerImpl, Bn3Tag("global_task_runner"));
+    if (!scope_pool)
+        return false;
 
-    return runner->initialize( scope_pool->onClear());
+    looper_scheduler = MAKE_SHARED(ScopedTaskLooperScheduler, Bn3Tag("global_looper_scheduler"));
+    if (!looper_scheduler)
+        return false;
+
+    looper_scheduler->start();
+    return true;
 }
 void ScopedTaskRunner::release()
 {
-    runner->release();
-    
-    scope_pool.reset();
-    runner.reset();
+
+    looper_scheduler->stop();
+
+    scope_pool->release();
+    scope_pool.reset();    
 }

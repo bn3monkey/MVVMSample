@@ -229,6 +229,10 @@ namespace Bn3Monkey
             LOG_D("Scoped Task (%s) Created", _name.str());
         }
         
+        virtual ~ScopedTask()
+        {
+        }
+
         ScopedTask(const ScopedTask& other) = delete;
         
         ScopedTask(ScopedTask&& other)

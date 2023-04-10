@@ -4,20 +4,21 @@
 using namespace Bn3Monkey;
 
 ScopedTaskScopeImpl::ScopedTaskScopeImpl(const Bn3Tag& scope_name,
-    std::function<bool(ScopedTaskScopeImpl&)> onStart,
-    std::function<ScopedTaskScopeImpl*()> getCurrentScope) :
+    std::function<ScopedTaskScopeImpl*()> getCurrentScope,
+    std::function<bool()> is_pool_initialized) :
     _name(scope_name),
-    _onStart(onStart),
-    _getCurrentScope(getCurrentScope)
+    _getCurrentScope(getCurrentScope),
+    _is_pool_initialized(is_pool_initialized)
 {
     _tasks = Bn3Queue(ScopedTask) { Bn3QueueAllocator(ScopedTask, Bn3Tag("tasks_", _name)) };
+
 }
 
 ScopedTaskScopeImpl::ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other)
     : 
       _name(other._name),
-      _onStart(std::move(other._onStart)),
       _getCurrentScope(std::move(other._getCurrentScope)),
+      _is_pool_initialized(std::move(other._is_pool_initialized)),
       _thread(std::move(other._thread)),
       _id(std::move(other._id)),
       _state(std::move(other._state)),
@@ -31,10 +32,39 @@ ScopedTaskScopeImpl::~ScopedTaskScopeImpl()
 {
 }
 
-void ScopedTaskScopeImpl::start()
+bool ScopedTaskScopeImpl::start()
 {
-    LOG_D("Scope (%s) starts", _name.str());
-    _thread = std::thread([&]() {worker(); });
+    if (ScopeState::IDLE == _state)
+    {
+        LOG_D("Scope (%s) starts", _name.str());
+
+        if (!_is_pool_initialized())
+        {
+            LOG_D("Scope (%s) cannot be started", _name.str());
+            return false;
+        }
+
+        _thread = std::thread{ &ScopedTaskScopeImpl::worker, this };
+        _thread.detach();
+
+        {
+            std::mutex local_mtx;
+            std::unique_lock<std::mutex> lock(local_mtx);
+            _cv.wait(lock, [&]() {
+                return ScopeState::EMPTY == _state;
+                });
+        }
+    }
+    return true;
+}
+
+void ScopedTaskScopeImpl::push(ScopedTask&& task)
+{
+    _tasks.push(std::move(task));
+    if (ScopeState::EMPTY == _state)
+    {
+        _state = ScopeState::RUNNING;
+    }
 }
 
 void ScopedTaskScopeImpl::stop()
@@ -46,15 +76,23 @@ void ScopedTaskScopeImpl::stop()
         std::unique_lock<std::mutex> lock(_mtx);
         if (ScopeState::IDLE != _state)
         {
-            _state = ScopeState::IDLE;
+            _state = ScopeState::STOPPING;
             is_stopped = true;
         }
+
     }
+
 
     if (is_stopped)
     {
         _cv.notify_all();
-        _thread.join();
+        {
+            std::mutex local_mtx;
+            std::unique_lock<std::mutex> lock(local_mtx);
+            _cv.wait(lock, [&]() {
+                return ScopeState::IDLE == _state;
+                });
+        }
     }
 }
 
@@ -66,6 +104,7 @@ void ScopedTaskScopeImpl::worker()
     setThreadName(thread_name.c_str());
 
     _id = std::this_thread::get_id();
+
     _state = ScopeState::EMPTY;
     _cv.notify_all();
 
@@ -76,11 +115,19 @@ void ScopedTaskScopeImpl::worker()
             using namespace std::chrono_literals;
             _current_task.clear();
 
-            _cv.wait(lock, [&]() {
+            bool timeout = _cv.wait_for(lock, 10s, [&]() {
                 return _state != ScopeState::EMPTY;
                 });
 
-            if (_state == ScopeState::IDLE)
+            if (!timeout)
+            {
+                if (_state == ScopeState::EMPTY)
+                {
+                    _state = ScopeState::STOPPING;
+                }
+            }
+
+            if (ScopeState::STOPPING == _state)
             {
                 LOG_D("Scope (%s) : Cancel all non-executed tasks ", _name.str());
                 while (!_tasks.empty())
@@ -90,6 +137,7 @@ void ScopedTaskScopeImpl::worker()
                     _current_task.cancel();
                 }
                 LOG_D("Worker (%s) Ends", _name.str());
+                _state = ScopeState::IDLE;
                 break;
             }
 
@@ -113,16 +161,22 @@ void ScopedTaskScopeImpl::worker()
         _current_task.invoke();
         LOG_D("Scope(%s) - Tasks(%s) ends", _name.str(), _current_task.name());
     }
+
+    _cv.notify_all();
 }
 
 /***********************************************/
 ScopedTaskScopeImplPool::ScopedTaskScopeImplPool()
 {
-    _onClear = [&]() {clear(); };
     _scopes = Bn3Deque(ScopedTaskScopeImpl) { Bn3DequeAllocator(ScopedTaskScopeImpl, Bn3Tag("scopes")) };
+    _is_pool_initialized = std::bind(&ScopedTaskScopeImplPool::isPoolInitialized_, this);
+    {
+        std::unique_lock<std::mutex> lock(_mtx);
+        _is_initialized = true;
+    }
 }
 
-ScopedTaskScopeImpl& ScopedTaskScopeImplPool::getScope(const Bn3Tag& scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart)
+ScopedTaskScopeImpl& ScopedTaskScopeImplPool::getScope(const Bn3Tag& scope_name)
 {
     for (auto& scope : _scopes)
     {
@@ -134,7 +188,7 @@ ScopedTaskScopeImpl& ScopedTaskScopeImplPool::getScope(const Bn3Tag& scope_name,
         return getCurrentScope();
     };
 
-    _scopes.emplace_back(scope_name, onStart, temp_getCurrentScope);
+    _scopes.emplace_back(scope_name, temp_getCurrentScope, isPoolInitialized());
     return _scopes.back();
 }
 ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getCurrentScope() {
@@ -146,8 +200,13 @@ ScopedTaskScopeImpl* ScopedTaskScopeImplPool::getCurrentScope() {
     }
     return nullptr;
 }
-void ScopedTaskScopeImplPool::clear()
+void ScopedTaskScopeImplPool::release()
 {
+    {
+        std::unique_lock<std::mutex> lock(_mtx);
+        _is_initialized = false;
+    }
+
     for (auto& scope : _scopes)
     {
         scope.stop();

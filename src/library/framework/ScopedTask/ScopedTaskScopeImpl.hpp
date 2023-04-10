@@ -76,8 +76,9 @@ namespace Bn3Monkey
     enum class ScopeState
     {
         IDLE = 0, // 할당된 작업 없으면 쓰레드도 동작하지 않음
-        EMPTY = 2, // 할당된 작업 없음
-        RUNNING = 3, // 할당된 작업 있음
+        EMPTY = 1, // 할당된 작업 없음
+        RUNNING = 2, // 할당된 작업 있음
+        STOPPING = 3, // 시간 초과거나 외부로부터 정지 명령이 들어왔을 경우
     };
 
     class ScopedTaskScopeImplPool;
@@ -88,15 +89,14 @@ namespace Bn3Monkey
         friend class ScopedTaskScopeImplPool;
 
         ScopedTaskScopeImpl(const Bn3Tag& scope_name,
-            std::function<bool(ScopedTaskScopeImpl&)> onStart,
-            std::function<ScopedTaskScopeImpl*()> getCurrentScope);
+            std::function<ScopedTaskScopeImpl*()> getCurrentScope,
+            std::function<bool()> is_pool_initialized);
 
         ScopedTaskScopeImpl(ScopedTaskScopeImpl&& other);
 
         virtual ~ScopedTaskScopeImpl();
        
 
-        void start();
         void stop();
 
         template<class Func, class... Args>
@@ -104,7 +104,7 @@ namespace Bn3Monkey
         {
             // Scope가 꺼져있으면 스코프 키기
             // 자기 자신 Scope에서 불렀으면 무조건 ScopeState는 Running
-            // 다른 Scope에서 불렀으면 IDLE, EMPTY, READY, RUNNING 중 하나
+            // 다른 Scope에서 불렀으면 IDLE, EMPTY, RUNNING 중 하나
 
             // ScopeTask 수행 요청하기
             ScopedTask task{ task_name };
@@ -114,8 +114,8 @@ namespace Bn3Monkey
 
             {
                 std::unique_lock<std::mutex> lock(_mtx);
-                if (startScope(task))      
-                    pushToScope(std::move(task));
+                if (start())
+                    push(std::move(task));
             }
 
             LOG_D("Run Task (%s)", task_name.str());
@@ -130,6 +130,8 @@ namespace Bn3Monkey
             auto ret = task.make(std::forward<Func>(func), std::forward<Args>(args)...);
 
             LOG_D("Make task (%s)", task_name.str());
+
+
 
             // 현재 스코프와 호출한 스코프가 같은 경우 바로 실행하기
             auto* current_scope = _getCurrentScope();
@@ -159,14 +161,8 @@ namespace Bn3Monkey
             
             {
                 std::unique_lock<std::mutex> lock(_mtx);
-                if (startScope(task))
-                {
-                    pushToScope(std::move(task));
-                }
-                else
-                {
-                    ret->cancel();
-                }
+                if (start())
+                    push(std::move(task));
             }
 
             LOG_D("Call Task (%s)", task_name.str());
@@ -179,31 +175,8 @@ namespace Bn3Monkey
         inline std::thread::id id() { return _id; }
 
     private:
-        inline bool startScope(const ScopedTask& task) {
-            if (ScopeState::IDLE == _state)
-            {
-                LOG_D("Task %s starts scope (%s)", task.name(), name());
-                if (!_onStart(*this))
-                {
-                    LOG_D("Request manager is stopped.\n");
-                    return false;
-                }
-
-                std::mutex local_mtx;
-                std::unique_lock<std::mutex> lock(local_mtx);
-                _cv.wait(lock, [&]() {
-                    return _state == ScopeState::EMPTY;
-                    });
-            }
-            return true;
-        }
-        inline void pushToScope(ScopedTask&& task) {
-            if (_state == ScopeState::EMPTY)
-                _state = ScopeState::RUNNING;
-            _tasks.push(std::move(task));
-        }
-        
-
+        bool start();
+        void push(ScopedTask&& task);
         
         inline bool compare(ScopedTaskScopeImpl* other) {
             if (other == nullptr)
@@ -217,8 +190,7 @@ namespace Bn3Monkey
         Bn3Tag _name;
 
         std::function<ScopedTaskScopeImpl*()> _getCurrentScope;
-        std::function<bool(ScopedTaskScopeImpl&)> _onStart;
-
+        
         std::thread _thread;
         std::thread::id _id;
 
@@ -229,23 +201,36 @@ namespace Bn3Monkey
         std::mutex _mtx;
         std::condition_variable _cv;
 
+        std::function<bool()> _is_pool_initialized;
+
     };
 
     class ScopedTaskScopeImplPool
     {
     public:
         ScopedTaskScopeImplPool();
-        ScopedTaskScopeImpl& getScope(const Bn3Tag& scope_name, std::function<bool(ScopedTaskScopeImpl&)> onStart);
+        ScopedTaskScopeImpl& getScope(const Bn3Tag& scope_name);
         ScopedTaskScopeImpl* getCurrentScope();
-        
-        inline std::function<void()>& onClear() {
-            return _onClear;
+
+        std::function<bool()>& isPoolInitialized() {
+            return _is_pool_initialized;
         }
 
-    private:
-        void clear();
+        void initialize();
+        void release();
 
-        std::function<void()> _onClear;
+    private:
+        std::function<bool()> _is_pool_initialized;
+        inline bool isPoolInitialized_() {
+            {
+                std::unique_lock<std::mutex> lock(_mtx);
+                return _is_initialized;
+            }
+        }
+
+        bool _is_initialized;
+        std::mutex _mtx;
+
         Bn3Deque(ScopedTaskScopeImpl) _scopes;
 
     };

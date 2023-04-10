@@ -67,7 +67,6 @@
 #define Bn3DequeAllocator(TYPE, TAG)
 #endif
 
-/*
 namespace Bn3Monkey
 {
 	class ScopedTaskLooperScheduler;
@@ -104,7 +103,7 @@ namespace Bn3Monkey
 		{
 			if (!_is_started)
 			{
-				LOG_D("looper %s runs every %lld ms", static_cast<long long int>(interval));
+				LOG_D("looper %s runs every %lld ms", _name.str(), interval.count());
 				_is_started = true;
 				_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(interval);
 				_scope = &scope;
@@ -120,7 +119,7 @@ namespace Bn3Monkey
 		{
 			if (!_is_started)
 			{
-				LOG_D("looper %s runs every %lld s", static_cast<long long int>(s));
+				LOG_D("looper %s runs every %lld s", _name.str(), interval.count());
 
 				_is_started = true;
 
@@ -165,12 +164,8 @@ namespace Bn3Monkey
 	public:
 		ScopedTaskLooperScheduler();
 
-		inline std::function<void()>& onStart() {
-			return _onStart;
-		}
-		inline std::function<void()>& onStop() {
-			return _onStop;
-		}
+		void start();
+		void stop();
 
 		inline std::function<void(ScopedTaskLooperImpl&)>& onAdd() {
 			return _onAdd;
@@ -183,8 +178,6 @@ namespace Bn3Monkey
 		ScopedTaskLooperImpl& getLooper(const Bn3Tag& looper_name);
 
 	private:
-		void start();
-		void stop();
 		void routine();
 
 		void add(ScopedTaskLooperImpl& looper);
@@ -196,7 +189,7 @@ namespace Bn3Monkey
 		std::function<void(ScopedTaskLooperImpl&)> _onRemove;
 
 		Bn3Deque(ScopedTaskLooperImpl) _loopers;
-		Bn3List(ScopedTaskLooperImpl&) _activated_loopers;
+		Bn3List(ScopedTaskLooperImpl*) _activated_loopers;
 
 		bool _is_running;
 		std::mutex _mtx;
@@ -206,6 +199,4 @@ namespace Bn3Monkey
 	};
 
 }
-*/
-
 #endif

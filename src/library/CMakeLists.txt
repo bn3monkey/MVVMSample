@@ -19,8 +19,12 @@ message("SOURCE_FILES is ${SOURCE_FILES}")
 add_library(bn3monkey_library
     STATIC
     ${SOURCE_FILES})
+
     
-target_compile_definitions(bn3monkey_library PUBLIC BN3MONKEY_DEBUG)
+message("Current Build Type is ${CMAKE_BUILD_TYPE}")
+if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+    target_compile_definitions(bn3monkey_library PUBLIC BN3MONKEY_DEBUG)
+endif()
 
 set_property(TARGET bn3monkey_library PROPERTY CXX_STANDARD 17)
 set_property(TARGET bn3monkey_library PROPERTY CXX_STANDARD_REQUIRED ON)
