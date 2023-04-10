@@ -67,6 +67,7 @@
 #define Bn3DequeAllocator(TYPE, TAG)
 #endif
 
+/*
 namespace Bn3Monkey
 {
 	class ScopedTaskLooperScheduler;
@@ -204,7 +205,7 @@ namespace Bn3Monkey
 		std::thread _thread;
 	};
 
-	
 }
+*/
 
 #endif

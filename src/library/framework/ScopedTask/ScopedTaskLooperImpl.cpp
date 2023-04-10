@@ -1,6 +1,6 @@
 #include "ScopedTaskLooperImpl.hpp"
 
-
+/*
 Bn3Monkey::ScopedTaskLooperImpl::ScopedTaskLooperImpl(ScopedTaskLooperImpl&& other) : 
 	_name(std::move(other._name)), 
 	_onAdd(std::move(other._onAdd)),
@@ -140,4 +140,4 @@ void Bn3Monkey::ScopedTaskLooperScheduler::remove(ScopedTaskLooperImpl& looper)
 		}
 	}
 }
-
+*/

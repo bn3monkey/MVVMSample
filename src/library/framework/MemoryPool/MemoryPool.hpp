@@ -19,10 +19,9 @@ namespace Bn3Monkey
 	{
 	public:
 
-		template<typename... Sizes>
-        static inline bool initialize(Sizes... sizes)
+        static inline bool initialize(std::initializer_list<size_t> sizes)
         {
-			return _impl.initialize(std::forward<Sizes>(sizes)...);
+			return _impl.initialize(sizes);
         }
 
 		static inline void release()
@@ -65,23 +64,7 @@ namespace Bn3Monkey
 			}
 			
 			std::string analyzePool(size_t i) {
-				if (i == 0)
-					return _impl.analyzePool<0>();
-				else if (i == 1)
-					return _impl.analyzePool<1>();
-				else if (i == 2)
-					return _impl.analyzePool<2>();
-				else if (i == 3)
-					return _impl.analyzePool<3>();
-				else if (i == 4)
-					return _impl.analyzePool<4>();
-				else if (i == 5)
-					return _impl.analyzePool<5>();
-				else if (i == 6)
-					return _impl.analyzePool<6>();
-				else if (i == 7)
-					return _impl.analyzePool<7>();
-				return std::string();
+				return _impl.analyzePool(i);
 			}
 		};
 
