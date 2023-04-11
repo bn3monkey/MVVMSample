@@ -39,13 +39,51 @@
 
 namespace Bn3Monkey
 {
+    template<typename Type>
+    class OnPropertyChanged {
+    public:
+        OnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(Type)> function) : scope(scope), function(function) {}
+        ScopedTaskResult<bool> operator()(const Bn3Tag& name, Type value) {
+            return scope.call(name, function, value);
+        }
+    private:
+        ScopedTaskScope scope;
+        std::function<bool(Type)> function;
+    };
+
+    template<typename Type>
+    class OnPropertyNotified
+    {
+    public:
+        OnPropertyNotified() {
+            is_intialized = false;
+        }
+        OnPropertyNotified(const ScopedTaskScope& scope, std::function<void(Type, bool)> function) : scope(scope), function(function) {
+            is_intialized = true;
+        }
+        void operator()(const Bn3Tag& name, Type value, bool success) {
+            if (!is_initalized)
+                return;
+            scope.run(name, function, value, success);
+        }
+        void clear() {
+            is_initialized = false;
+        }
+    private:
+        bool is_initalized;
+        ScopedTaskScope scope;
+        std::function<void(Type, bool)> function;
+    };
+
     template <typename Type>
     class AsyncProperty
     {
+        
+
     public:
         AsyncProperty(const Bn3Tag& name, Type default_value) : _name(name), _value(default_value)
         {
-            _on_property_changed_map = Bn3MapAllocator(Bn3Tag, std::function<bool(Type)>)(Bn3MapAllocator(Bn3Tag, std::function<bool(Type)>, Bn3Tag("map", name)));
+            _on_property_changed = Bn3Vector(OnPropertyChanged<Type>)(Bn3VectorAllocator(OnPropertyChanged<Type>, Bn3Tag("changed_", name)));
         }
 
         int get()
@@ -56,33 +94,37 @@ namespace Bn3Monkey
             }
         }
 
-        bool set(Type value)
+        bool set(const ScopedTaskScope& scope, Type value)
         {
-            onPropertyProcessed(value);
+            auto result = scope.call(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
+            auto ret = result.wait();
+            if (!ret)
+                return false;
+            if (!(*ret))
+                return false;
+            return true;
         }
-        void setAsync(const Bn3Tag& scope_name, Type value)
+        void setAsync(const ScopedTaskScope& scope, Type value)
         {
-            ScopedTaskScope(scope_name).run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
+            scope.run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
         }
 
-        void registerOnPropertyChanged(const Bn3Tag& scope_name, std::function<bool(Type value)> onPropertyChanged)
+        void registerOnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(Type value)> onPropertyChanged)
         {
-            _on_property_changed_map[scope_name] = onPropertyChanged;
+            _on_property_changed.emplace_back(scope, onPropertyChanged);
         }
         void clearOnPropertyChanged()
         {
             _on_property_changed.clear();
         }
 
-        void registerOnPropertyNotified(const Bn3Tag& scope_name, std::function<void(Type, bool)> onPropertyNotified)
+        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<void(Type, bool)> onPropertyNotified)
         {
-            _notified_target_scope = scope_name;
-            _on_property_notified = onPropertyNotified;
+            _on_property_notified = OnPropertyNotified<Type>(scope, onPropertyNotified);
         }
         void clearOnPropertyNotified()
         {
-            _notified_target_scope.clear();
-            _on_property_notified = nullptr;
+            _on_property_notified.clear();
         }
 
     private:
@@ -91,12 +133,9 @@ namespace Bn3Monkey
             ScopedTaskResult<bool> results[32];
             size_t length = 0;
 
-            for (auto& onpropertychanged : _on_property_changed_map)
+            for (auto& onpropertychanged : _on_property_changed)
             {
-                auto& scope_name = onpropertychanged.first;
-                auto& callback = onpropertychanged.second;
-
-                results[length++] = ScopedTaskScope(scope_name).call(Bn3Tag("Changed_",_name), callback);
+                results[length++] = onpropertychanged(Bn3Tag("Changed_",_name), value);
             }
             
             for (size_t i = 0; i < length; i++)
@@ -112,30 +151,27 @@ namespace Bn3Monkey
         }
         void onPropertyNotified(Type value, bool success)
         {
-            if (_on_property_notified)
-            {
-                ScopedTaskScope(_notified_target_scope).run(Bn3Tag("Notified", name), _on_property_notified, value, success);
-            }
+            _on_property_notified(Bn3Tag("Notified_", name), value, success);
         }
-        void onPropertyProcessed(Type value)
+        bool onPropertyProcessed(Type value)
         {
             bool ret = onPropertyChanged(value);
+            if (ret)
             {
                 std::unique_lock<std::mutex> lock(_mtx);
                 _value = value;
             }
             onPropertyNotified(_value, ret);
+            return ret;
         }
 
 
         Bn3Tag _name;
-        int _value;
+        Type _value;
         std::mutex _mtx;
-
-        Bn3MapAllocator(Bn3Tag, std::function<bool(int)>) _on_property_changed_map;
-        
-        std::function<void(int, bool)> _on_property_notified;
-        Bn3Tag _notified_target_scope;
+       
+        Bn3Vector(OnPropertyChanged<Type>) _on_property_changed;
+        OnPropertyNotified<Type> _on_property_notified;
     };
 }
 #endif
