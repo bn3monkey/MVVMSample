@@ -35,33 +35,52 @@
 
 
 #include "../ScopedTask/ScopedTask.hpp"
+#include "AsyncPropertyNode.hpp"
+
+
 #include <functional>
+#include <initializer_list>
+#include <type_traits>
 
 namespace Bn3Monkey
 {
     template<typename Type>
     class OnPropertyChanged {
     public:
-        OnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(Type)> function) : scope(scope), function(function) {}
-        ScopedTaskResult<bool> operator()(const Bn3Tag& name, Type value) {
+        using ConstReference = const Type&;
+
+        OnPropertyChanged()
+        {
+            is_initalized = false;
+        }
+        OnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(ConstReference)> function) : scope(scope), function(function) {
+            is_initalized = true;
+        }
+        ScopedTaskResult<bool> operator()(const Bn3Tag& name, ConstReference value) {
+            if (!is_initialized)
+                return;
             return scope.call(name, function, value);
         }
+
     private:
+        bool is_initalized;
         ScopedTaskScope scope;
-        std::function<bool(Type)> function;
+        std::function<bool(ConstReference)> function;
     };
 
-    template<typename Type>
+    template<typename Param>
     class OnPropertyNotified
     {
     public:
+        using ConstReference = const Type&;
+
         OnPropertyNotified() {
             is_intialized = false;
         }
-        OnPropertyNotified(const ScopedTaskScope& scope, std::function<void(Type, bool)> function) : scope(scope), function(function) {
+        OnPropertyNotified(const ScopedTaskScope& scope, std::function<void(ConstReference, bool)> function) : scope(scope), function(function) {
             is_intialized = true;
         }
-        void operator()(const Bn3Tag& name, Type value, bool success) {
+        void operator()(const Bn3Tag& name, ConstReference value, bool success) {
             if (!is_initalized)
                 return;
             scope.run(name, function, value, success);
@@ -72,31 +91,58 @@ namespace Bn3Monkey
     private:
         bool is_initalized;
         ScopedTaskScope scope;
-        std::function<void(Type, bool)> function;
+        std::function<void(ConstReference, bool)> function;
     };
 
-    template <typename Type>
-    class AsyncProperty
-    {
+    
         
 
+    template <typename Type>
+    class AsyncProperty : public AsyncPropertyNode
+    {
     public:
-        AsyncProperty(const Bn3Tag& name, Type default_value) : _name(name), _value(default_value)
+        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, Bn3String()>);
+
+
+        AsyncProperty(const Bn3Tag& name, const ScopedTaskScope& scope, const Type& default_value) : _name(name), _scope(scope), _value(default_value)
         {
-            _on_property_changed = Bn3Vector(OnPropertyChanged<Type>)(Bn3VectorAllocator(OnPropertyChanged<Type>, Bn3Tag("changed_", name)));
+            _on_property_changed = Bn3Vector(OnPropertyChanged<Type>)(Bn3VectorAllocator(OnPropertyChanged<Type>, Bn3Tag("Callback_", name)));
         }
 
-        int get()
+        initialize(const Type& new_value)
         {
-            {
-                std::unique_lock<std::mutex> lock(_mtx);
-                return _value;
-            }
+            _value = new_value;
         }
 
-        bool set(const ScopedTaskScope& scope, Type value)
+        virtual bool isValid(const Type& value)
         {
-            auto result = scope.call(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
+            return true;
+        }
+
+        void signal()
+        {
+            _scope.run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, _value);
+        }
+
+        inline Type get()
+        {
+            auto prev_value = _value;
+
+            auto resut = _scope.call(_name, &AsyncProperty<Type>::onPropertyGetted, this);
+            auto ret = result.wait();
+            if (!ret)
+                return prev_value;
+            if (!(*ret))
+                return prev_value;
+            return *ret;
+        }
+
+        bool set(const Type& value)
+        {
+            if (!isValid(value))
+                return false;
+
+            auto result = _scope.call(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
             auto ret = result.wait();
             if (!ret)
                 return false;
@@ -104,31 +150,40 @@ namespace Bn3Monkey
                 return false;
             return true;
         }
-        void setAsync(const ScopedTaskScope& scope, Type value)
+        void setAsync(const Type& value)
         {
-            scope.run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
+            if (!isValid(value))
+                return;
+
+            _scope.run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, value);
         }
 
-        void registerOnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(Type value)> onPropertyChanged)
+        void registerOnPropertyChanged(const ScopedTaskScope& scope, std::function<bool(const Type&)> onPropertyChanged)
         {
             _on_property_changed.emplace_back(scope, onPropertyChanged);
         }
+
         void clearOnPropertyChanged()
         {
             _on_property_changed.clear();
         }
 
-        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<void(Type, bool)> onPropertyNotified)
+        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<void(const Type&, bool)> onPropertyNotified)
         {
             _on_property_notified = OnPropertyNotified<Type>(scope, onPropertyNotified);
         }
+
         void clearOnPropertyNotified()
         {
             _on_property_notified.clear();
         }
 
     private:
-        bool onPropertyChanged(Type value)
+        Type onPropertyGetted()
+        {
+            return _scope;
+        }
+        bool onPropertyChanged(const Type& value)
         {
             ScopedTaskResult<bool> results[32];
             size_t length = 0;
@@ -149,11 +204,11 @@ namespace Bn3Monkey
 
             return true;
         }
-        void onPropertyNotified(Type value, bool success)
+        void onPropertyNotified(const Type& value, bool success)
         {
             _on_property_notified(Bn3Tag("Notified_", name), value, success);
         }
-        bool onPropertyProcessed(Type value)
+        bool onPropertyProcessed(const Type& value)
         {
             bool ret = onPropertyChanged(value);
             if (ret)
@@ -167,11 +222,13 @@ namespace Bn3Monkey
 
 
         Bn3Tag _name;
-        Type _value;
-        std::mutex _mtx;
+        ScopedTaskScope _scope;
        
         Bn3Vector(OnPropertyChanged<Type>) _on_property_changed;
         OnPropertyNotified<Type> _on_property_notified;
+
+        Type _value;
     };
+
 }
 #endif
