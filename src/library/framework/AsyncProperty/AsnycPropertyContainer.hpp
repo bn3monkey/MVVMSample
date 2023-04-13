@@ -87,7 +87,9 @@ namespace Bn3Monkey
 
 	private:
 		size_t getPropertiesSize();
-		char* assignProperty(size_t offset, size_t property_size);
+		
+		template<class Type>
+		AsyncPropertyNode* assignProperty(const Bn3Tag& name, );
 
 		Bn3Map(PropertyPath, AsyncPropertyNode*) _nodes;
 		char* _container;

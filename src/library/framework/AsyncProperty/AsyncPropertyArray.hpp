@@ -70,7 +70,7 @@ namespace Bn3Monkey
         OnPropertyArrayNotified() {
             is_initialized = false;
         }
-        OnPropertyArrayNotified(const ScopedTaskScope& scope, std::function<void(const Type(&)[], size_t, size_t, bool)> function) : scope(scope), function(function) {
+        OnPropertyArrayNotified(const ScopedTaskScope& scope, std::function<void(const Type&, size_t, size_t, bool)> function) : scope(scope), function(function) {
             is_initialized = true;
         }
         void operator()(const Bn3Tag& name, const Type(&values)[], size_t offset, size_t index) {
@@ -86,6 +86,159 @@ namespace Bn3Monkey
         std::function<void(const Type(&)[], size_t, size_t)> function
     };
 
+    template <typename Type, size_t MAX_ARRAY_SIZE>
+    class AsyncPropertyArray : public AsyncPropertyNode
+    {
+    public:
+        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, Bn3String()>);
 
+        template<size_t array_size>
+        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, const Type (&values)[array_size], size_t length) : _name(name), _scope(scope), _length(length)
+        {
+            static_assert(array_size >= MAX_ARRAY_SIZE);
+            assert(length <= MAX_ARRAY_SIZE);
+
+            std::copy(values, values + length, _values);
+        }
+
+        template<size_t array_size>
+        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, std::initializer_list<Type> values) : _name(name), _scope(scope)
+        {
+            static_assert(array_size >= MAX_ARRAY_SIZE);
+            assert(length <= MAX_ARRAY_SIZE);
+
+            _length = values.size();
+            std::copy(values.begin(), values.end(), _values);
+        }
+
+        template<size_t array_size>
+        void initialize(const Type(&values)[array_size], size_t length)
+        {
+            static_assert(array_size >= MAX_ARRAY_SIZE);
+            assert(length <= MAX_ARRAY_SIZE);
+
+            _length = length;
+            std::copy(values, values + length, _values);
+        }
+
+        void initialize(std::initializer_list<Type> values)
+        {
+            _length = length;
+            std::copy(values.begin(), values.end(), _values);
+        }
+
+        virtual bool isValid(Type* values, size_t offset, size_t length)
+        {
+            if (offset >= _length)
+                return false;
+            if (offset + length >= _length)
+                return false;
+            return true;
+        }
+
+        void signal()
+        {
+            _scope.run(_name, &AsyncPropertyArray<Type>::onPropertyProcessed, this, _value);
+        }
+
+
+        bool get(Type* values, size_t offset, size_t length)
+        {
+            auto result = _scope.call(_name, &AsyncPropertyArray<Type>::onPropertyGetted, this, values, offset, length);
+            auto ret = result.wait();
+            if (!ret)
+                return false;
+            return ret;
+        }
+
+        Type get(size_t idx)
+        {
+            auto value = _value;
+            bool ret = get(&value, idx, 1);
+            if (!ret)
+                return value;
+            return value;
+        }
+
+
+
+        bool set(Type* values, size_t offset, size_t length)
+        {
+            if (!isValid(values, offset, length))
+                return false;
+
+            Setter setter{ values, offset, length };
+            auto result = _scope.call(_name, &AsyncPropertyArray<Type>::onPropertyProcessed, this, setter);
+            auto ret = result.wait();
+            if (!ret)
+                return false;
+            if (!(*ret))
+                return false;
+            return true;
+        }
+
+        inline bool set(const Type& value, size_t idx)
+        {
+            return set(&value, idx, 1);
+        }
+
+        bool setAsync(Type* values, size_t offset, size_t length)
+        {
+            if (!isValid(values, offset, length))
+                return false;
+
+            Setter setter{ values, offset, length };
+            _scope.run(_name, &AsnycPropertyArray<Type>::onPropertyProcessed, this, setter);
+        }
+
+        inline void setAsync(const Type& value, size_t idx)
+        {
+            return setAsync(&value, idx, 1);
+        }
+
+        void registerOnPropertyChanged(const ScopedTaskScope& scope, std::function<void(const Type(&)[], size_t, size_t)> onPropertyChanged)
+        {
+            _on_property_changed.emplace_back(scope, onPropertyChanged);
+        }
+
+        void clearOnPropertyChanged()
+        {
+            _on_property_changed.clear();
+        }
+
+        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<void(const Type(&)[], size_t, size_t)> onPropertyNotified)
+        {
+            _on_property_notified = OnPropertyArrayNotified<Type>(scope, onPropertyNotified);
+        }
+
+        void clearOnPropertyNotified()
+        {
+            _on_property_notified.clear();
+        }
+
+    private:
+        struct Setter{
+            Type _values[MAX_ARRAY_SIZE];
+            size_t _offset;
+            size_t _length;
+
+            Setter(Type* values, size_t offset, size_t length)
+            {
+                _offset = offset;
+                _length = length;
+                std::copy(values, values + length, _values);
+            }
+        }
+
+        Bn3Tag _name;
+        ScopedTaskScope _scope;
+
+        Bn3Vector(OnPropertyArrayChanged<Type>) _on_property_changed;
+        OnPropertyArrayNotified<Type> _on_property_notified;
+
+        size_t _length;
+        Type _values[MAX_ARRAY_SIZE];
+    };
 }
+
 #endif

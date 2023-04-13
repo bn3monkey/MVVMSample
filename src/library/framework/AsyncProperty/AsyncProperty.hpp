@@ -109,7 +109,7 @@ namespace Bn3Monkey
             _on_property_changed = Bn3Vector(OnPropertyChanged<Type>)(Bn3VectorAllocator(OnPropertyChanged<Type>, Bn3Tag("Callback_", name)));
         }
 
-        initialize(const Type& new_value)
+        void initialize(const Type& new_value)
         {
             _value = new_value;
         }
@@ -124,7 +124,7 @@ namespace Bn3Monkey
             _scope.run(_name, &AsyncProperty<Type>::onPropertyProcessed, this, _value);
         }
 
-        inline Type get()
+        Type get()
         {
             auto prev_value = _value;
 
