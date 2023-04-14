@@ -1,7 +1,7 @@
 #ifndef __BN3MONKEY_ASYNC_PROPERTY_CONTAINER__
 #define __BN3MONKEY_ASYNC_PROPERTY_CONTAINER__
 
-#include "AsyncProperty.hpp"
+#include "AsyncPropertyImpl.hpp"
 #include "AsyncPropertyArray.hpp"
 
 namespace Bn3Monkey
@@ -68,15 +68,15 @@ namespace Bn3Monkey
 	public:
 
 		template<class Property, class PropertyArray>
-		void create(const char* content);
+		void create(const char* content) {}
 
 		template<class Type>
-		AsyncProperty<Type>* find(const char* position);
+		AsyncProperty<Type>* find(const char* position) { return nullptr;  }
 
 		template<class Type>
-		AsyncPropertyArray<Type>* findArray(const char* position);
+		AsyncPropertyArray<Type>* findArray(const char* position) { return nullptr; }
 
-		void clear();
+		void clear() { return; }
 
 
 		//          -- onPropertyChanged-->
@@ -86,10 +86,10 @@ namespace Bn3Monkey
 		virtual void subscribe(AsyncPropertyContainer* other) {}
 
 	private:
-		size_t getPropertiesSize();
+		size_t getPropertiesSize() { return 0; }
 		
 		template<class Type>
-		AsyncPropertyNode* assignProperty(const Bn3Tag& name, );
+		AsyncPropertyNode* assignProperty(const Bn3Tag& name, ) { return nullptr; }
 
 		Bn3Map(PropertyPath, AsyncPropertyNode*) _nodes;
 		char* _container;

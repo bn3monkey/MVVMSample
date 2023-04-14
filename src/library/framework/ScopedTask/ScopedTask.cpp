@@ -53,6 +53,7 @@ void ScopedTaskRunner::release()
 {
 
     looper_scheduler->stop();
+    looper_scheduler.reset();
 
     scope_pool->release();
     scope_pool.reset();    

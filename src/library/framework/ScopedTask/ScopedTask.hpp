@@ -21,13 +21,21 @@ namespace Bn3Monkey
     class ScopedTaskResult
     {
     public: 
+        ScopedTaskResult() {}
         ReturnType* wait()
         {
-            return _impl->wait();
+            if (_impl)
+                return _impl->wait();
+            return nullptr;
         }
         ScopedTaskResult(const ScopedTaskResult& other) = delete;
         ScopedTaskResult(ScopedTaskResult&& other) : _impl(std::move(other._impl))
         {
+        }
+        ScopedTaskResult& operator=(ScopedTaskResult&& other)
+        {
+            _impl = other._impl;
+            return *this;
         }
 
     private:
@@ -44,7 +52,9 @@ namespace Bn3Monkey
     public:
         friend class ScopedTaskLooper;
 
-        ScopedTaskScope(const Bn3Tag& scope_name);
+        ScopedTaskScope(const Bn3Tag& scope_name = Bn3Tag("main"));
+        ScopedTaskScope(const ScopedTaskScope& other) : _impl(other._impl) {}
+        
 
         template<class Func, class... Args>
         void run(const Bn3Tag& task_name, Func&& func, Args&&... args)
