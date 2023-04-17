@@ -314,8 +314,8 @@ void test_asyncpropertyarray(bool value)
 
 	for (size_t i = 0; i < 128; i++)
 	{
-		initial_x[i] = (double)i;
-		initial_y[i] = i;
+		application.x[i] = initial_x[i] = (double)i;
+		application.y[i] = initial_y[i] = i;
 	}
 
 
@@ -359,7 +359,7 @@ void test_asyncpropertyarray(bool value)
 	main.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "x : Main -> Device (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -377,7 +377,7 @@ void test_asyncpropertyarray(bool value)
 	main.x.registerOnPropertyNotified(ip_scope, [&](const double* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "x : Main -> IP (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -396,7 +396,7 @@ void test_asyncpropertyarray(bool value)
 		{
 			std::stringstream ss;
 			ss << "x : Main -> UI (offset : " << offset << " length : " << length << ")\n";
-			for (size_t i = offset; i < offset + length; i++)
+			for (size_t i = 0; i < length; i++)
 			{
 				ss << value[i] << " ";
 			}
@@ -417,7 +417,7 @@ void test_asyncpropertyarray(bool value)
 	main.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "y : Main -> Device (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -435,7 +435,7 @@ void test_asyncpropertyarray(bool value)
 	main.y.registerOnPropertyNotified(ip_scope, [&](const int* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "y : Main -> IP (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -454,7 +454,7 @@ void test_asyncpropertyarray(bool value)
 		{
 			std::stringstream ss;
 			ss << "y : Main -> UI (offset : " << offset << " length : " << length << ")\n";
-			for (size_t i = offset; i < offset + length; i++)
+			for (size_t i = 0; i < length; i++)
 			{
 				ss << value[i] << " ";
 			}
@@ -477,7 +477,7 @@ void test_asyncpropertyarray(bool value)
 		
 		std::stringstream ss;
 		ss << "x : UI -> Main (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -495,7 +495,7 @@ void test_asyncpropertyarray(bool value)
 	ui.x.registerOnPropertyUpdated(ui_scope, [&](const double* value, size_t offset, size_t length, bool success) {
 		std::stringstream ss;
 		ss << "x : UI -> Application (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -508,7 +508,7 @@ void test_asyncpropertyarray(bool value)
 	ui.y.registerOnPropertyNotified(main_scope, [&](const int* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "y : UI -> Main (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -526,7 +526,7 @@ void test_asyncpropertyarray(bool value)
 	ui.y.registerOnPropertyUpdated(ui_scope, [&](const int* value, size_t offset, size_t length, bool success) {
 		std::stringstream ss;
 		ss << "y : UI -> Application (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -539,7 +539,7 @@ void test_asyncpropertyarray(bool value)
 	device.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "x : Device -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -552,7 +552,7 @@ void test_asyncpropertyarray(bool value)
 	device.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "y : Device -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -565,7 +565,7 @@ void test_asyncpropertyarray(bool value)
 	ip.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "x : IP -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -578,7 +578,7 @@ void test_asyncpropertyarray(bool value)
 	ip.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
 		std::stringstream ss;
 		ss << "y : IP -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = offset; i < offset + length; i++)
+		for (size_t i = 0; i < length; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -601,12 +601,12 @@ void test_asyncpropertyarray(bool value)
 
 			{
 				double x[128];
-				ui.x.get(x, 0, 128);
+				ui.x.get(x, 1, 2);
 				application.refreshX(x, 1, 2);
 			}
 			{
 				int y[128];
-				ui.y.get(y, 0, 128);
+				ui.y.get(y, 1, 2);
 				application.refreshY(y, 1, 2);
 			}
 		}

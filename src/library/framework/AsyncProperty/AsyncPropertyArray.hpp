@@ -18,28 +18,28 @@ namespace Bn3Monkey
     class OnPropertyArrayNotified
     {
     public:
-        OnPropertyArrayNotified(const ScopedTaskScope& scope, std::function<bool(const Type (&)[MAX_ARRAY_SIZE], size_t, size_t)> function) : scope(scope), function(function) {
+        OnPropertyArrayNotified(const ScopedTaskScope& scope, std::function<bool(const Type*, size_t, size_t)> function) : scope(scope), function(function) {
         }
-        ScopedTaskResult<bool> operator()(const Bn3Tag& name, const Type (&values)[MAX_ARRAY_SIZE], size_t offset, size_t length) {
+        ScopedTaskResult<bool> operator()(const Bn3Tag& name, const Type* values, size_t offset, size_t length) {
             return scope.call(name, function, values, offset, length);
         }
     private:
         ScopedTaskScope scope;
-        std::function<bool(const Type(&)[MAX_ARRAY_SIZE], size_t, size_t)> function;
+        std::function<bool(const Type*, size_t, size_t)> function;
     };
 
     template<typename Type, size_t MAX_ARRAY_SIZE>
     class OnPropertyArrayUpdated
     {
     public:
-        OnPropertyArrayUpdated(const ScopedTaskScope& scope, std::function<void(const Type(&)[MAX_ARRAY_SIZE], size_t, size_t, bool)> function) : scope(scope), function(function) {
+        OnPropertyArrayUpdated(const ScopedTaskScope& scope, std::function<void(const Type*, size_t, size_t, bool)> function) : scope(scope), function(function) {
         }
-        void operator()(const Bn3Tag& name, const Type(&values)[MAX_ARRAY_SIZE], size_t offset, size_t length, bool success) {
+        void operator()(const Bn3Tag& name, const Type* values, size_t offset, size_t length, bool success) {
             scope.run(name, function, values, offset, length, success);
         }
     private:
         ScopedTaskScope scope;
-        std::function<void(const Type(&)[MAX_ARRAY_SIZE], size_t, size_t, bool)> function;
+        std::function<void(const Type*, size_t, size_t, bool)> function;
     };
 
     
@@ -72,7 +72,7 @@ namespace Bn3Monkey
         }
 
 
-        virtual bool isValid(const Type (&values)[MAX_ARRAY_SIZE], size_t offset, size_t length)
+        virtual bool isValid(const Type* values, size_t offset, size_t length)
         {
             if (offset >= _length)
                 return false;
@@ -82,7 +82,7 @@ namespace Bn3Monkey
         }        
 
 
-        bool get(const Type(&values)[MAX_ARRAY_SIZE], size_t offset, size_t length)
+        bool get(Type* values, size_t offset, size_t length)
         {
             auto result = _scope.call(_name, AsyncPropertyArray::onPropertyObtained, this, values, offset, length);
             auto ret = result.wait();
@@ -93,14 +93,14 @@ namespace Bn3Monkey
 
         Type get(size_t idx)
         {
-            Type values[MAX_ARRAY_SIZE];
-            bool ret = get(values, idx, 1);
+            Type value = _values.data[idx];
+            bool ret = get(&value, idx, 1);
             if (!ret)
-                return values[idx];
-            return values[idx];
+                return value;
+            return value;
         }
 
-        bool set(const Type(&values)[MAX_ARRAY_SIZE], size_t offset, size_t length)
+        bool set(const Type* values, size_t offset, size_t length)
         {
             if (!isValid(values, offset, length))
                 return false;
@@ -214,6 +214,7 @@ namespace Bn3Monkey
             {
                 std::copy(data + offset, data + offset + length, values);
             }
+
         };
 
         static bool onPropertyObtained(AsyncPropertyArray* self, Type* values, size_t offset, size_t length)
@@ -234,7 +235,7 @@ namespace Bn3Monkey
 
             for (auto& on_property_notified : self->_on_property_notifieds)
             {
-                auto result = on_property_notified(Bn3Tag("Notified_", self->_name), self->_values.data, offset, length);
+                auto result = on_property_notified(Bn3Tag("Notified_", self->_name), self->_values.data + offset, offset, length);
                 results[callback_length++] = std::move(result);
             }
 
@@ -268,7 +269,7 @@ namespace Bn3Monkey
         {
             for (auto& on_property_updated : self->_on_property_updateds)
             {
-                on_property_updated(Bn3Tag("Updated_", self->_name), self->_values.data, offset, length, success);
+                on_property_updated(Bn3Tag("Updated_", self->_name), self->_values.data + offset, offset, length, success);
             }
         }
         static bool onPropertyProcessed(AsyncPropertyArray* self, Array values, size_t offset, size_t length)
@@ -282,8 +283,8 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
 
-        Bn3StaticVector<OnPropertyArrayNotified<Type, MAX_ARRAY_SIZE>> _on_property_notifieds;
-        Bn3StaticVector < OnPropertyArrayUpdated<Type, MAX_ARRAY_SIZE>> _on_property_updateds;
+        Bn3StaticVector<OnPropertyArrayNotified<Type, MAX_ARRAY_SIZE>, 16> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyArrayUpdated<Type, MAX_ARRAY_SIZE>, 16> _on_property_updateds;
 
         size_t _length;
 
