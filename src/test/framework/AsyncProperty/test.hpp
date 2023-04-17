@@ -20,6 +20,7 @@ void test_asyncproperty(bool value)
 	ScopedTaskScope ip_scope{ Bn3Tag("ip") };
 	ScopedTaskScope ui_scope{ Bn3Tag("ui") };
 
+	
 	struct Application
 	{
 		double depth;
@@ -263,6 +264,7 @@ void test_asyncpropertyarray(bool value)
 	ScopedTaskScope ip_scope{ Bn3Tag("ip") };
 	ScopedTaskScope ui_scope{ Bn3Tag("ui") };
 
+	
 	struct Application
 	{
 		double x[128];
@@ -703,6 +705,7 @@ void test_asyncpropertyarray(bool value)
 			std::this_thread::sleep_for(1s);
 		}
 	}
+	
 }
 
 void testAsyncProperty(bool value)
@@ -713,7 +716,7 @@ void testAsyncProperty(bool value)
 	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 32, 32, 32, 32, 32 });
 	Bn3Monkey::ScopedTaskRunner().initialize();
 
-	test_asyncproperty(false);
+	test_asyncproperty(true);
 	test_asyncpropertyarray(true);
 
 	Bn3Monkey::ScopedTaskRunner().release();

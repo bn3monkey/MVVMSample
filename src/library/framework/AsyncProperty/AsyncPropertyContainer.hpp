@@ -73,8 +73,8 @@ namespace Bn3Monkey
 		template<class Type>
 		AsyncProperty<Type>* find(const char* position) { return nullptr;  }
 
-		template<class Type>
-		AsyncPropertyArray<Type>* findArray(const char* position) { return nullptr; }
+		template<class Type, size_t MAX_ARRAY_SIZE>
+		AsyncPropertyArray<Type, MAX_ARRAY_SIZE>* findArray(const char* position) { return nullptr; }
 
 		void clear() { return; }
 

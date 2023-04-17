@@ -2,37 +2,7 @@
 #define __BN3MONKEY_ASYNC_PROPERTY__
 
 #include "../Tag/Tag.hpp"
-#include "../MemoryPool/MemoryPool.hpp"
-
-#ifdef __BN3MONKEY_MEMORY_POOL__
-#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
-#define Bn3Queue(TYPE) Bn3Monkey::Bn3Container::queue<TYPE>
-#define Bn3Map(KEY, VALUE) Bn3Monkey::Bn3Container::map<KEY, VALUE>
-#define Bn3String() Bn3Monkey::Bn3Container::string
-#define Bn3Vector(TYPE) Bn3Monkey::Bn3Container::vector<TYPE>
-#define Bn3Deque(TYPE) Bn3Monkey::Bn3Container::deque<TYPE>
-
-#define Bn3QueueAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
-#define Bn3MapAllocator(KEY, VALUE, TAG) Bn3Monkey::Bn3Allocator<std::pair<const KEY, VALUE>>(TAG)
-#define Bn3StringAllocator(TAG) Bn3Monkey::Bn3Allocator<char>(TAG)
-#define Bn3VectorAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
-#define Bn3DequeAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
-
-#else
-#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
-#define Bn3Queue(TYPE, TAG) std::queue<TYPE>
-#define Bn3Map(KEY, VALUE, TAG) std::unordered_map<KEY, VALUE>
-#define Bn3String(TAG) std::string
-#define Bn3Vector(TYPE, TAG) std::vector<TYPE>
-#define Bn3Deque(TYPE) std::deque<TYPE>
-
-#define Bn3QueueAllocator(TYPE, TAG) 
-#define Bn3MapAllocator(KEY, VALUE, TAG) 
-#define Bn3StringAllocator(TAG) 
-#define Bn3VectorAllocator(TYPE, TAG) 
-#define Bn3DequeAllocator(TYPE, TAG)
-#endif
-
+#include "../StaticVector/StaticVector.hpp"
 
 #include "../ScopedTask/ScopedTask.hpp"
 #include "AsyncPropertyNode.hpp"
@@ -80,15 +50,11 @@ namespace Bn3Monkey
     class AsyncProperty : public AsyncPropertyNode
     {
     public:
-        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, Bn3String()>);
+        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, std::string>);
 
 
         AsyncProperty(const Bn3Tag& name, const ScopedTaskScope& scope, const Type& default_value) : _name(name), _scope(scope), _value(default_value), _prev_value(default_value)
         {
-            _on_property_notifieds = Bn3Vector(OnPropertyNotified<Type>)(Bn3VectorAllocator(OnPropertyNotified<Type>, Bn3Tag("Notifier_", name)));
-            _on_property_notifieds.reserve(32);
-            _on_property_updateds = Bn3Vector(OnPropertyUpdated<Type>)(Bn3VectorAllocator(OnPropertyUpdated<Type>, Bn3Tag("Updater_", name)));
-            _on_property_updateds.reserve(32);
         }
 
         virtual bool isValid(const Type& value)
@@ -234,8 +200,8 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
        
-        Bn3Vector(OnPropertyNotified<Type>) _on_property_notifieds;
-        Bn3Vector(OnPropertyUpdated<Type>) _on_property_updateds;
+        Bn3StaticVector<OnPropertyNotified<Type>, 16> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyUpdated<Type>, 16> _on_property_updateds;
 
         Type _prev_value;
         Type _value;

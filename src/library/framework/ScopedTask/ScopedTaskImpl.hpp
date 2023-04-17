@@ -36,12 +36,14 @@
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
 #define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
+#define Bn3List(TYPE) Bn3Monkey::Bn3Container::list<TYPE>
 #define Bn3Queue(TYPE) Bn3Monkey::Bn3Container::queue<TYPE>
 #define Bn3Map(KEY, VALUE) Bn3Monkey::Bn3Container::map<KEY, VALUE>
 #define Bn3String() Bn3Monkey::Bn3Container::string
 #define Bn3Vector(TYPE) Bn3Monkey::Bn3Container::vector<TYPE>
 #define Bn3Deque(TYPE) Bn3Monkey::Bn3Container::deque<TYPE>
 
+#define Bn3ListAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
 #define Bn3QueueAllocator(TYPE, TAG) Bn3Monkey::Bn3Allocator<TYPE>(TAG)
 #define Bn3MapAllocator(KEY, VALUE, TAG) Bn3Monkey::Bn3Allocator<std::pair<const KEY, VALUE>>(TAG)
 #define Bn3StringAllocator(TAG) Bn3Monkey::Bn3Allocator<char>(TAG)
@@ -50,18 +52,22 @@
 
 #else
 #define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
-#define Bn3Queue(TYPE, TAG) std::queue<TYPE>
-#define Bn3Map(KEY, VALUE, TAG) std::unordered_map<KEY, VALUE>
-#define Bn3String(TAG) std::string
-#define Bn3Vector(TYPE, TAG) std::vector<TYPE>
+#define Bn3List(TYPE) std::list<TYPE>
+#define Bn3Queue(TYPE) std::queue<TYPE>
+#define Bn3Map(KEY, VALUE) std::unordered_map<KEY, VALUE>
+#define Bn3String() std::string
+#define Bn3Vector(TYPE) std::vector<TYPE>
 #define Bn3Deque(TYPE) std::deque<TYPE>
 
+#define Bn3ListAllocator(TYPE, TAG)
 #define Bn3QueueAllocator(TYPE, TAG) 
 #define Bn3MapAllocator(KEY, VALUE, TAG) 
 #define Bn3StringAllocator(TAG) 
 #define Bn3VectorAllocator(TYPE, TAG) 
 #define Bn3DequeAllocator(TYPE, TAG)
 #endif
+
+#include "../StaticVector/StaticVector.hpp"
 
 namespace Bn3Monkey
 {
@@ -225,7 +231,6 @@ namespace Bn3Monkey
         ScopedTask(const Bn3Tag& name)
         {
             _name = name;
-            _call_stack = Bn3Vector(Bn3Tag) { Bn3VectorAllocator(Bn3Tag, Bn3Tag("stack_", name)) };
             LOG_D("Scoped Task (%s) Created", _name.str());
         }
         
@@ -293,7 +298,7 @@ namespace Bn3Monkey
             // 상호 대기가 될 수 있음
 
             auto& super_call_stack = calling_task._call_stack;
-            _call_stack.insert(_call_stack.end(), super_call_stack.begin(), super_call_stack.end());
+            _call_stack.push_back(super_call_stack);
             _call_stack.push_back(scope_name);
         }
 
@@ -351,7 +356,7 @@ namespace Bn3Monkey
 
         Bn3Tag _name;
                 
-        Bn3Vector(Bn3Tag) _call_stack;
+        Bn3StaticVector<Bn3Tag, 8> _call_stack;
 
         std::function<void(bool)> _invoke;
     };
