@@ -14,7 +14,7 @@
 namespace Bn3Monkey
 {
     
-    template<typename Type, size_t MAX_ARRAY_SIZE>
+    template<typename Type>
     class OnPropertyArrayNotified
     {
     public:
@@ -28,7 +28,7 @@ namespace Bn3Monkey
         std::function<bool(const Type*, size_t, size_t)> function;
     };
 
-    template<typename Type, size_t MAX_ARRAY_SIZE>
+    template<typename Type>
     class OnPropertyArrayUpdated
     {
     public:
@@ -283,8 +283,8 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
 
-        Bn3StaticVector<OnPropertyArrayNotified<Type, MAX_ARRAY_SIZE>, 16> _on_property_notifieds;
-        Bn3StaticVector<OnPropertyArrayUpdated<Type, MAX_ARRAY_SIZE>, 16> _on_property_updateds;
+        Bn3StaticVector<OnPropertyArrayNotified<Type>, 16> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyArrayUpdated<Type>, 16> _on_property_updateds;
 
         size_t _length;
 
