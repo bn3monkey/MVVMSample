@@ -35,7 +35,7 @@
 namespace Bn3Monkey
 {
     
-    constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 8192};
+    constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 0};
     constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
     constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
     constexpr size_t HEADER_SIZE = sizeof(unsigned int) + sizeof(int) + sizeof(void*) + sizeof(Bn3Tag);

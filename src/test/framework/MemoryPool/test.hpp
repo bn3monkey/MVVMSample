@@ -4,7 +4,7 @@
 #include "../test_helper.hpp"
 
 
-constexpr size_t block_sizes[] = { 64, 128, 256, 512, 1024, 2048, 4098, 8192 };
+constexpr size_t block_sizes[] = { 64, 128, 256, 512, 1024, 2048, 4098, 8192, 16384 };
 constexpr size_t block_sizes_length = sizeof(block_sizes) / sizeof(size_t);
 
 template<size_t idx>
@@ -93,7 +93,7 @@ void test_alloc(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4, 4 });
 	BlockBase* ptr[block_sizes_length][5];
 
 	inner_test_alloc<block_sizes_length-1>(ptr);
@@ -124,7 +124,7 @@ void test_dealloc_nullptr(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4, 4 });
 	
 	Block<64>* ptr = nullptr;
 	Bn3MemoryPool::destroy(ptr);
@@ -141,7 +141,7 @@ void test_alloc_and_initialize(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4, 4 });
 	
 	{
 		auto* ptr = Bn3MemoryPool::construct<Block<64>>(Bn3Tag("a_ptr"), 'a');
@@ -171,7 +171,7 @@ void test_alloc_array(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4, 4 });
 
 	
 	{
@@ -205,7 +205,7 @@ void test_sharedPtr(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize({ 4, 4, 4, 4, 4, 4, 4, 4, 4 });
 	
 
 	{
@@ -230,7 +230,7 @@ void test_allocator(bool value)
 
 	using namespace Bn3Monkey;
 
-	Bn3MemoryPool::initialize( { 256, 256, 4, 4, 4, 4, 4, 4 });
+	Bn3MemoryPool::initialize( { 256, 256, 4, 4, 4, 4, 4, 4, 4 });
 
 	{
 		std::vector<int> sans(Bn3Allocator<int>(Bn3Tag("sans")));

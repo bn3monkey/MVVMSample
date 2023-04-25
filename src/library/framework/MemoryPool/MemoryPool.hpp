@@ -69,7 +69,7 @@ namespace Bn3Monkey
 		};
 
 	private:
-		static Bn3MemoryBlockPools<8> _impl;
+		static Bn3MemoryBlockPools<BLOCK_SIZE_POOL_LENGTH> _impl;
 	};
 
 	template<class Type, class... Args>

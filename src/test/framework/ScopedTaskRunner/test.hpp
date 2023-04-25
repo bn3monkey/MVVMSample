@@ -383,7 +383,7 @@ void testScopedTaskRunner(bool value)
 	if (!value)
 		return;
 
-	Bn3Monkey::Bn3MemoryPool::initialize({ 32, 32, 128, 32, 32, 32, 32, 32 });
+	Bn3Monkey::Bn3MemoryPool::initialize({ 32, 32, 128, 32, 32, 32, 32, 32, 4 });
 
 	test_looper(true);
 

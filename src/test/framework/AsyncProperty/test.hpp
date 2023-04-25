@@ -5,8 +5,33 @@
 #include "test_helper.hpp"
 #include "../test_helper.hpp"
 
+#include <fstream>
+
+void test_asyncpropertycontainer(bool value)
+{
+	if (!value)
+		return;
+
+	using namespace Bn3Monkey;
+
+	AsyncPropertyContainer container{Bn3Tag("test")};
+	
+	char* content = new char[1024 * 1024];
+	memset(content, 0, 1024 * 1024);
+
+	std::ifstream ifs;
+	ifs.open("test.json");
+	if (ifs.is_open())
+	{
+		ifs.read(content, 1024 * 1024);
+	}
 
 
+	container.create(content);
+	
+	delete content;
+	return;
+}
 
 void test_asyncproperty(bool value)
 {
@@ -713,9 +738,10 @@ void testAsyncProperty(bool value)
 	if (!value)
 		return;
 
-	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 32, 32, 32, 32, 32 });
+	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 32, 32, 32, 32, 32, 4});
 	Bn3Monkey::ScopedTaskRunner().initialize();
 
+	test_asyncpropertycontainer(true);
 	test_asyncproperty(true);
 	test_asyncpropertyarray(true);
 

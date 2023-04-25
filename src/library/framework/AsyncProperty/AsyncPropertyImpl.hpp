@@ -207,5 +207,8 @@ namespace Bn3Monkey
         Type _value;
     };
 
+    /* 나중 과제 최대한 heap allocation을 방지하기 위해서 값은 char 256으로 저장합니다. std::string 특수화 */
+
+
 }
 #endif

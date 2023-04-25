@@ -3,6 +3,7 @@
 
 #include "AsyncPropertyImpl.hpp"
 #include "AsyncPropertyArray.hpp"
+#include "json.hpp"
 
 namespace Bn3Monkey
 {
@@ -66,9 +67,13 @@ namespace Bn3Monkey
 	class AsyncPropertyContainer
 	{
 	public:
+		AsyncPropertyContainer(const Bn3Tag& container_name, const ScopedTaskScope& scope) : _name(container_name) {}
+		virtual ~AsyncPropertyContainer() {
+			if (_container)
+				delete _container;
+		}
 
-		template<class Property, class PropertyArray>
-		void create(const char* content) {}
+		bool create(const char* content);
 
 		template<class Type>
 		AsyncProperty<Type>* find(const char* position) { return nullptr;  }
@@ -86,9 +91,12 @@ namespace Bn3Monkey
 		virtual void subscribe(AsyncPropertyContainer* other) {}
 
 	private:
-		size_t getPropertiesSize() { return 0; }
-		
-		AsyncPropertyNode* assignProperty(const Bn3Tag& name) { return nullptr; }
+		void mapAsyncProperty(const PropertyPath& path, AsyncPropertyNode* node);
+		char* getAsyncProperty(char* ptr, const std::string& type, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content);
+		char* getAsyncPropertyArray(char* ptr, const std::string& type, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content);
+		char* assignProperties(const Bn3Monkey::PropertyPath& path, char* allocated_ptr, const nlohmann::json& content);
+
+		Bn3Tag _name;
 
 		Bn3Map(PropertyPath, AsyncPropertyNode*) _nodes;
 		char* _container;
