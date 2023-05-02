@@ -41,7 +41,7 @@ size_t getAsyncPropertyArraySizeImpl(const std::string& type)
 	else if (type == "double")
 		type_size = sizeof(Bn3Monkey::AsyncPropertyArray<double, MAX_ARRAY_SIZE>);
 	else if (type == "std::string")
-		type_size = sizeof(Bn3Monkey::AsyncPropertyArray<std::string, MAX_ARRAY_SIZE>);
+		type_size = sizeof(Bn3Monkey::AsyncPropertyArray<Bn3Monkey::Bn3StaticString, MAX_ARRAY_SIZE>);
 	return type_size;
 }
 
@@ -89,7 +89,7 @@ size_t getAsyncPropertySize(const std::string& type)
 	else if (type == "double")
 		type_size = sizeof(Bn3Monkey::AsyncProperty<double>);
 	else if (type == "std::string")
-		type_size = sizeof(Bn3Monkey::AsyncProperty<std::string>);
+		type_size = sizeof(Bn3Monkey::AsyncProperty<Bn3Monkey::Bn3StaticString>);
 	return type_size;
 }
 
@@ -156,9 +156,12 @@ void Bn3Monkey::AsyncPropertyContainer::mapAsyncProperty(const PropertyPath& pat
 }
 char* Bn3Monkey::AsyncPropertyContainer::getAsyncProperty(char* ptr, const std::string& type, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content)
 {
-	auto value_iter = content.fi
+	// auto value_iter = content.fi
+	return nullptr;
 }
 
+
+/*
 static char* assignProperties(Bn3Map(Bn3Monkey::PropertyPath, Bn3Monkey::AsyncPropertyNode*)& nodes, const Bn3Monkey::PropertyPath& path, char* allocated_ptr, const nlohmann::json& content)
 {
 	char* ptr = allocated_ptr;
@@ -213,7 +216,7 @@ static char* assignProperties(Bn3Map(Bn3Monkey::PropertyPath, Bn3Monkey::AsyncPr
 
 	return ptr;
 }
-
+*/
 
 
 bool Bn3Monkey::AsyncPropertyContainer::create(const char* content)
@@ -224,7 +227,7 @@ bool Bn3Monkey::AsyncPropertyContainer::create(const char* content)
 	_container = Bn3Monkey::Bn3MemoryPool::allocate<char>(_name, content_length);
 
 	PropertyPath root_path("");
-	assignProperties(_nodes, root_path, _container, json_content);
+	// assignProperties(_nodes, root_path, _container, json_content);
 
 	printf("%llu\n", content_length);
 	return true;

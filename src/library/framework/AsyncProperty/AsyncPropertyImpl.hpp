@@ -3,7 +3,7 @@
 
 #include "../Tag/Tag.hpp"
 #include "../StaticVector/StaticVector.hpp"
-
+#include "../StaticString/StaticString.hpp"
 #include "../ScopedTask/ScopedTask.hpp"
 #include "AsyncPropertyNode.hpp"
 
@@ -50,35 +50,33 @@ namespace Bn3Monkey
     class AsyncProperty : public AsyncPropertyNode
     {
     public:
-        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, std::string>);
+        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, Bn3StaticString>);
+        using value_type = Type;
 
-
-        AsyncProperty(const Bn3Tag& name, const ScopedTaskScope& scope, const Type& default_value) : _name(name), _scope(scope), _value(default_value), _prev_value(default_value)
+        AsyncProperty(const Bn3Tag& name, const ScopedTaskScope& scope, const value_type& default_value) : _name(name), _scope(scope), _value(default_value), _prev_value(default_value)
         {
         }
 
-        virtual bool isValid(const Type& value)
+        virtual bool isValid(const value_type& value)
         {
             return true;
         }
 
-        Type get()
+        value_type get()
         {
-            auto result = _scope.call(_name, AsyncProperty<Type>::onPropertyObtained, this);
+            auto result = _scope.call(_name, AsyncProperty<value_type>::onPropertyObtained, this);
             auto ret = result.wait();
             if (!ret)
-                return _value;
-            if (!(*ret))
                 return _value;
             return *ret;
         }
 
-        bool set(const Type& value)
+        bool set(const value_type& value)
         {
             if (!isValid(value))
                 return false;
 
-            auto result = _scope.call(_name, AsyncProperty<Type>::onPropertyCommitted, this, value);
+            auto result = _scope.call(_name, AsyncProperty<value_type>::onPropertyCommitted, this, value);
             auto ret = result.wait();
             if (!ret)
                 return false;
@@ -89,7 +87,7 @@ namespace Bn3Monkey
 
         bool notify()
         {
-            auto result = _scope.call(_name, AsyncProperty<Type>::onPropertyNotified, this);
+            auto result = _scope.call(_name, AsyncProperty<value_type>::onPropertyNotified, this);
             auto ret = result.wait();
             if (!ret)
                 return false;
@@ -100,7 +98,7 @@ namespace Bn3Monkey
 
         void update(bool success)
         {
-            _scope.run(_name, AsyncProperty<Type>::onPropertyUpdated, this, success);
+            _scope.run(_name, AsyncProperty<value_type>::onPropertyUpdated, this, success);
         }
 
         void setAsync(const Type& value)
@@ -108,11 +106,11 @@ namespace Bn3Monkey
             if (!isValid(value))
                 return;
 
-            _scope.run(_name, AsyncProperty<Type>::onPropertyProcessed, this, value);
+            _scope.run(_name, AsyncProperty<value_type>::onPropertyProcessed, this, value);
         }
                         
 
-        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<bool(const Type&)> onPropertyNotified)
+        void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<bool(const value_type&)> onPropertyNotified)
         {
             _on_property_notifieds.emplace_back(scope, onPropertyNotified);
         }
@@ -122,7 +120,7 @@ namespace Bn3Monkey
             _on_property_notifieds.clear();
         }
 
-        void registerOnPropertyUpdated(const ScopedTaskScope& scope, std::function<void(const Type&, bool)> onPropertyUpdated)
+        void registerOnPropertyUpdated(const ScopedTaskScope& scope, std::function<void(const value_type&, bool)> onPropertyUpdated)
         {
             _on_property_updateds.emplace_back(scope, onPropertyUpdated);
         }
@@ -133,17 +131,17 @@ namespace Bn3Monkey
         }
 
     private:
-        static Type onPropertyObtained(AsyncProperty<Type>* self)
+        static value_type onPropertyObtained(AsyncProperty<value_type>* self)
         {
             return self->_value;
         }
-        static bool onPropertyCommitted(AsyncProperty<Type>* self, const Type& value)
+        static bool onPropertyCommitted(AsyncProperty<value_type>* self, const value_type& value)
         {
             self->_prev_value = self->_value;
             self->_value = value;
             return true;
         }
-        static bool onPropertyNotified(AsyncProperty<Type>* self)
+        static bool onPropertyNotified(AsyncProperty<value_type>* self)
         {
             ScopedTaskResult<bool> results[8];
             
@@ -181,14 +179,14 @@ namespace Bn3Monkey
             }
             return success;
         }
-        static void onPropertyUpdated(AsyncProperty<Type>* self, bool success)
+        static void onPropertyUpdated(AsyncProperty<value_type>* self, bool success)
         {
             for (auto& on_property_updated : self->_on_property_updateds)
             {
                 on_property_updated(Bn3Tag("Updated_", self->_name), self->_value, success);
             }
         }
-        static bool onPropertyProcessed(AsyncProperty<Type>* self, const Type& value)
+        static bool onPropertyProcessed(AsyncProperty<value_type>* self, const value_type& value)
         {
             onPropertyCommitted(self, value);
             bool ret = onPropertyNotified(self);
@@ -200,15 +198,12 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
        
-        Bn3StaticVector<OnPropertyNotified<Type>, 16> _on_property_notifieds;
-        Bn3StaticVector<OnPropertyUpdated<Type>, 16> _on_property_updateds;
+        Bn3StaticVector<OnPropertyNotified<value_type>, 16> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyUpdated<value_type>, 16> _on_property_updateds;
 
-        Type _prev_value;
-        Type _value;
+        value_type _prev_value;
+        value_type _value;
     };
-
-    /* 나중 과제 최대한 heap allocation을 방지하기 위해서 값은 char 256으로 저장합니다. std::string 특수화 */
-
 
 }
 #endif

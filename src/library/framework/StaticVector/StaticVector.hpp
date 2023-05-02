@@ -4,6 +4,7 @@
 #include <string>
 #include <cstring>
 #include <new>
+#include <initializer_list>
 
 namespace Bn3Monkey
 {
@@ -14,6 +15,15 @@ namespace Bn3Monkey
 		using iterator = Type*;
 		using const_iterator = const Type*;
 
+		Bn3StaticVector(const Type* values, size_t length)
+		{
+			_length = length;
+			memcpy(_data, values, sizeof(Type) * length);
+		}
+		Bn3StaticVector(std::initializer_list<Type> values)
+		{
+			std::copy(values.begin(), values.end(), (Type*)_data);
+		}
 		Bn3StaticVector() : _length(0) {}
 		Bn3StaticVector(const Bn3StaticVector& other) : _length(other._length)
 		{
@@ -103,6 +113,17 @@ namespace Bn3Monkey
 			memset(_data, 0, sizeof(Type) * MAX_SIZE);
 		}
 
+
+		void copyFrom(const Type* values, size_t start, size_t end)
+		{
+			memcpy(_data + sizeof(Type) * start, values, sizeof(Type) * (end - start));
+		}
+
+		
+		void copyTo(Type* values, size_t start, size_t end)
+		{
+			memcpy(values, _data + sizeof(Type) * start, sizeof(Type) * (end - start));
+		}
 		
 
 	private:

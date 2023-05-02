@@ -14,7 +14,7 @@ void test_asyncpropertycontainer(bool value)
 
 	using namespace Bn3Monkey;
 
-	AsyncPropertyContainer container{Bn3Tag("test")};
+	AsyncPropertyContainer container{Bn3Tag("test"), ScopedTaskScope(Bn3Tag("main"))};
 	
 	char* content = new char[1024 * 1024];
 	memset(content, 0, 1024 * 1024);
@@ -274,6 +274,34 @@ void test_asyncproperty(bool value)
 	using namespace std::chrono_literals;
 	std::this_thread::sleep_for(1s);
 
+	AsyncProperty<Bn3StaticString> test{ Bn3Tag("test"), main_scope, Bn3StaticString("Do you know kimchi?") };
+	test.registerOnPropertyNotified(main_scope, [](const Bn3StaticString& other) {
+		say("notified : %s\n", other.data());
+		return true;
+		});
+	test.registerOnPropertyUpdated(main_scope, [](const Bn3StaticString& other, bool value) {
+		if (value)
+		{
+			say("Updated : %s", other.data());
+		}
+		});
+
+
+	test.set(Bn3StaticString("abcd"));
+	auto ret = test.get();
+	say("ret : %s", ret.data());
+
+	if (test.notify())
+		test.update(true);
+
+	test.setAsync(Bn3StaticString("def"));
+
+	using namespace std::chrono_literals;
+	std::this_thread::sleep_for(1s);
+	{
+		auto ret = test.get();
+		say("ret : %s", ret.data());
+	}
 	return;
 }
 
@@ -295,10 +323,10 @@ void test_asyncpropertyarray(bool value)
 		double x[128];
 		int y[128];
 
-		void refreshX(const double* values, size_t offset, size_t length)
+		void refreshX(const double* values, size_t start, size_t end)
 		{
 			
-			std::copy(values, values + length, x + offset);
+			std::copy(values, values + end - start, x + start);
 
 			std::stringstream ss;
 			ss << "UI x is changed\n";
@@ -311,10 +339,10 @@ void test_asyncpropertyarray(bool value)
 			ss << "\n";
 			say(ss.str().c_str());
 		}
-		void refreshY(const int* values, size_t offset, size_t length)
+		void refreshY(const int* values, size_t start, size_t end)
 		{
 
-			std::copy(values, values + length, y + offset);
+			std::copy(values, values + end - start, y + start);
 
 			std::stringstream ss;
 			ss << "UI y is changed\n";
@@ -381,47 +409,47 @@ void test_asyncpropertyarray(bool value)
 	} ip(ip_scope, initial_x, initial_y);
 
 
-	main.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
+	main.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "x : Main -> Device (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : Main -> Device (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = device.x.set(value, offset, length);
+		bool ret = device.x.set(value, start, end);
 		if (ret)
 		{
-			return device.x.notify(offset, length);
+			return device.x.notify(start, end);
 		}
 		return false;
 		});
 
-	main.x.registerOnPropertyNotified(ip_scope, [&](const double* value, size_t offset, size_t length) {
+	main.x.registerOnPropertyNotified(ip_scope, [&](const double* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "x : Main -> IP (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : Main -> IP (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end- start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = ip.x.set(value, offset, length);
+		bool ret = ip.x.set(value, start, end);
 		if (ret)
 		{
-			return ip.x.notify(offset, length);
+			return ip.x.notify(start, end);
 		}
 		return false;
 		});
 
-	main.x.registerOnPropertyUpdated(ui_scope, [&](const double* value, size_t offset, size_t length, bool success)
+	main.x.registerOnPropertyUpdated(ui_scope, [&](const double* value, size_t start, size_t end, bool success)
 		{
 			std::stringstream ss;
-			ss << "x : Main -> UI (offset : " << offset << " length : " << length << ")\n";
-			for (size_t i = 0; i < length; i++)
+			ss << "x : Main -> UI (start : " << start << " end : " << end << ")\n";
+			for (size_t i = 0; i < end - start; i++)
 			{
 				ss << value[i] << " ";
 			}
@@ -430,56 +458,56 @@ void test_asyncpropertyarray(bool value)
 
 			if (success)
 			{
-				ui.x.set(value, offset, length);
-				ui.x.update(offset, length, true);
+				ui.x.set(value, start, end);
+				ui.x.update(start, end, true);
 			}
 			else
 			{
-				ui.x.update(offset, length, false);
+				ui.x.update(start, end, false);
 			}
 		});
 
-	main.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
+	main.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "y : Main -> Device (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "y : Main -> Device (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = device.y.set(value, offset, length);
+		bool ret = device.y.set(value, start, end);
 		if (ret)
 		{
-			return device.y.notify(offset, length);
+			return device.y.notify(start, end);
 		}
 		return false;
 		});
 
-	main.y.registerOnPropertyNotified(ip_scope, [&](const int* value, size_t offset, size_t length) {
+	main.y.registerOnPropertyNotified(ip_scope, [&](const int* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "y : Main -> IP (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "y : Main -> IP (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = ip.y.set(value, offset, length);
+		bool ret = ip.y.set(value, start, end);
 		if (ret)
 		{
-			return ip.y.notify(offset, length);
+			return ip.y.notify(start, end);
 		}
 		return false;
 		});
 
-	main.y.registerOnPropertyUpdated(ui_scope, [&](const int* value, size_t offset, size_t length, bool success)
+	main.y.registerOnPropertyUpdated(ui_scope, [&](const int* value, size_t start, size_t end, bool success)
 		{
 			std::stringstream ss;
-			ss << "y : Main -> UI (offset : " << offset << " length : " << length << ")\n";
-			for (size_t i = 0; i < length; i++)
+			ss << "y : Main -> UI (start : " << start << " end : " << end << ")\n";
+			for (size_t i = 0; i < end - start; i++)
 			{
 				ss << value[i] << " ";
 			}
@@ -488,96 +516,83 @@ void test_asyncpropertyarray(bool value)
 
 			if (success)
 			{
-				ui.y.set(value, offset, length);
-				ui.y.update(offset, length, true);
+				ui.y.set(value, start, end);
+				ui.y.update(start, end, true);
 			}
 			else
 			{
-				ui.y.update(offset, length, false);
+				ui.y.update(start, end, false);
 			}
 		});
 
 
-	ui.x.registerOnPropertyNotified(main_scope, [&](const double* value, size_t offset, size_t length) {
+	ui.x.registerOnPropertyNotified(main_scope, [&](const double* value, size_t start, size_t end) {
 		
 		std::stringstream ss;
-		ss << "x : UI -> Main (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : UI -> Main (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = main.x.set(value, offset, length);
+		bool ret = main.x.set(value, start, end);
 		if (ret)
 		{
-			return main.x.notify(offset, length);
+			return main.x.notify(start, end);
 		}
 		return false;
 		});
 
-	ui.x.registerOnPropertyUpdated(ui_scope, [&](const double* value, size_t offset, size_t length, bool success) {
+	ui.x.registerOnPropertyUpdated(ui_scope, [&](const double* value, size_t start, size_t end, bool success) {
 		std::stringstream ss;
-		ss << "x : UI -> Application (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : UI -> Application (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		application.refreshX(value, offset, length);
+		application.refreshX(value, start, end);
 		});
 
-	ui.y.registerOnPropertyNotified(main_scope, [&](const int* value, size_t offset, size_t length) {
+	ui.y.registerOnPropertyNotified(main_scope, [&](const int* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "y : UI -> Main (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "y : UI -> Main (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		bool ret = main.y.set(value, offset, length);
+		bool ret = main.y.set(value, start, end);
 		if (ret)
 		{
-			return main.y.notify(offset, length);
+			return main.y.notify(start, end);
 		}
 		return false;
 		});
 
-	ui.y.registerOnPropertyUpdated(ui_scope, [&](const int* value, size_t offset, size_t length, bool success) {
+	ui.y.registerOnPropertyUpdated(ui_scope, [&](const int* value, size_t start, size_t end, bool success) {
 		std::stringstream ss;
-		ss << "y : UI -> Application (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "y : UI -> Application (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
 		ss << "\n";
 		say(ss.str().c_str());
 
-		application.refreshY(value, offset, length);
+		application.refreshY(value, start, end);
 		});
 
-	device.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
+	device.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "x : Device -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
-		{
-			ss << value[i] << " ";
-		}
-		ss << "\n";
-		say(ss.str().c_str());
-
-		return true;
-		});
-
-	device.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
-		std::stringstream ss;
-		ss << "y : Device -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : Device -> Logic start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -587,10 +602,10 @@ void test_asyncpropertyarray(bool value)
 		return true;
 		});
 
-	ip.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t offset, size_t length) {
+	device.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "x : IP -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "y : Device -> Logic (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -600,10 +615,23 @@ void test_asyncpropertyarray(bool value)
 		return true;
 		});
 
-	ip.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t offset, size_t length) {
+	ip.x.registerOnPropertyNotified(device_scope, [&](const double* value, size_t start, size_t end) {
 		std::stringstream ss;
-		ss << "y : IP -> Logic (offset : " << offset << " length : " << length << ")\n";
-		for (size_t i = 0; i < length; i++)
+		ss << "x : IP -> Logic (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
+		{
+			ss << value[i] << " ";
+		}
+		ss << "\n";
+		say(ss.str().c_str());
+
+		return true;
+		});
+
+	ip.y.registerOnPropertyNotified(device_scope, [&](const int* value, size_t start, size_t end) {
+		std::stringstream ss;
+		ss << "y : IP -> Logic (start : " << start << " end : " << end << ")\n";
+		for (size_t i = 0; i < end - start; i++)
 		{
 			ss << value[i] << " ";
 		}
@@ -619,20 +647,20 @@ void test_asyncpropertyarray(bool value)
 			double new_x[] = { 100, 100 };
 			int new_y[] = {100, 100};
 
-			ui.x.set(new_x, 1, 2);
-			ui.y.set(new_y, 1, 2);
-			ui.x.notify(1, 2);
-			ui.y.notify(1, 2);
+			ui.x.set(new_x, 1, 3);
+			ui.y.set(new_y, 1, 3);
+			ui.x.notify(1, 3);
+			ui.y.notify(1, 3);
 
 			{
 				double x[128];
-				ui.x.get(x, 1, 2);
-				application.refreshX(x, 1, 2);
+				ui.x.get(x, 1, 3);
+				application.refreshX(x, 1, 3);
 			}
 			{
 				int y[128];
-				ui.y.get(y, 1, 2);
-				application.refreshY(y, 1, 2);
+				ui.y.get(y, 1, 3);
+				application.refreshY(y, 1, 3);
 			}
 		}
 
@@ -641,12 +669,12 @@ void test_asyncpropertyarray(bool value)
 			double new_x[] = { 200, 200, 200 };
 			int new_y[] = { 200, 200, 200 };
 
-			ui.x.set(new_x, 3, 3);
-			ui.y.set(new_y, 3, 3);
-			if (ui.x.notify(3, 3))
-				ui.x.update(3, 3, true);
-			if (ui.y.notify(3, 3))
-				ui.y.update(3, 3, true);
+			ui.x.set(new_x, 3, 6);
+			ui.y.set(new_y, 3, 6);
+			if (ui.x.notify(3, 6))
+				ui.x.update(3, 6, true);
+			if (ui.y.notify(3, 6))
+				ui.y.update(3, 6, true);
 
 			using namespace std::chrono_literals;
 			std::this_thread::sleep_for(1s);
@@ -657,8 +685,8 @@ void test_asyncpropertyarray(bool value)
 			double new_x[] = { 300, 300, 300, 300 };
 			int new_y[] = { 300, 300, 300, 300 };
 
-			ui.x.setAsync(new_x, 6, 4);
-			ui.y.setAsync(new_y, 6, 4);
+			ui.x.setAsync(new_x, 6, 10);
+			ui.y.setAsync(new_y, 6, 10);
 
 			using namespace std::chrono_literals;
 			std::this_thread::sleep_for(1s);
@@ -669,68 +697,14 @@ void test_asyncpropertyarray(bool value)
 			double new_x[] = { 400, 400, 400, 400, 400 };
 			int new_y[] = { 400, 400, 400, 400, 400 };
 
-			ui.x.setAsync(new_x, 10, 5);
-			ui.y.setAsync(new_y, 10, 5);
+			ui.x.setAsync(new_x, 10, 15);
+			ui.y.setAsync(new_y, 10, 15);
 
 			using namespace std::chrono_literals;
 			std::this_thread::sleep_for(1s);
 		}
 	}
-
-	{
-		// 1. Set Synchronously
-		{
-			ui.x.set(-10.0, 0);
-			ui.y.set(-10, 0);
-			ui.x.notify(0);
-			ui.y.notify(0);
-
-			{
-				double x[128];
-				x[0] = ui.x.get(0);
-
-				application.refreshX(x, 0, 1);
-			}
-			{
-				int y[128];
-				y[0] = ui.y.get(0);
-				application.refreshY(y, 0, 1);
-			}
-		}
-
-		// 1-2. Set Synchronously
-		{
-			ui.x.set(-20.0, 1);
-			ui.y.set(-20, 1);
-
-			if (ui.x.notify(1))
-				ui.x.update(1, true);
-			if (ui.y.notify(1))
-				ui.y.update(1, true);
-
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(1s);
-		}
-
-		// 2. Load From Library
-		{
-			ui.x.setAsync(-30.0, 2);
-			ui.y.setAsync(-30, 2);
-
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(1s);
-		}
-
-		// 3. Set Asychrnously
-		{
-			ui.x.setAsync(-40.0, 3);
-			ui.y.setAsync(-40, 3);
-
-			using namespace std::chrono_literals;
-			std::this_thread::sleep_for(1s);
-		}
-	}
-	
+		
 }
 
 void testAsyncProperty(bool value)
@@ -741,8 +715,8 @@ void testAsyncProperty(bool value)
 	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 32, 32, 32, 32, 32, 4});
 	Bn3Monkey::ScopedTaskRunner().initialize();
 
-	test_asyncpropertycontainer(true);
-	test_asyncproperty(true);
+	test_asyncpropertycontainer(false);
+	test_asyncproperty(false);
 	test_asyncpropertyarray(true);
 
 	Bn3Monkey::ScopedTaskRunner().release();

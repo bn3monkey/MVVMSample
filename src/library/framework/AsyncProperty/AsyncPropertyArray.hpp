@@ -20,8 +20,8 @@ namespace Bn3Monkey
     public:
         OnPropertyArrayNotified(const ScopedTaskScope& scope, std::function<bool(const Type*, size_t, size_t)> function) : scope(scope), function(function) {
         }
-        ScopedTaskResult<bool> operator()(const Bn3Tag& name, const Type* values, size_t offset, size_t length) {
-            return scope.call(name, function, values, offset, length);
+        ScopedTaskResult<bool> operator()(const Bn3Tag& name, const Type* values, size_t start, size_t end) {
+            return scope.call(name, function, values, start, end);
         }
     private:
         ScopedTaskScope scope;
@@ -34,8 +34,8 @@ namespace Bn3Monkey
     public:
         OnPropertyArrayUpdated(const ScopedTaskScope& scope, std::function<void(const Type*, size_t, size_t, bool)> function) : scope(scope), function(function) {
         }
-        void operator()(const Bn3Tag& name, const Type* values, size_t offset, size_t length, bool success) {
-            scope.run(name, function, values, offset, length, success);
+        void operator()(const Bn3Tag& name, const Type* values, size_t start, size_t end, bool success) {
+            scope.run(name, function, values, start, end, success);
         }
     private:
         ScopedTaskScope scope;
@@ -47,68 +47,55 @@ namespace Bn3Monkey
     class AsyncPropertyArray : public AsyncPropertyNode
     {
     public:
-        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, std::string>);
+        static_assert(std::is_arithmetic_v<Type> || std::is_enum_v<Type> || std::is_same_v<Type, Bn3StaticString>);
 
-        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, const Type (&values)[MAX_ARRAY_SIZE], size_t length) : _name(name), _scope(scope), _length(length)
+        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, const Type* values, size_t length) : _name(name), _scope(scope), _length(length)
         {
             assert(length <= MAX_ARRAY_SIZE);
 
-            _prev_values.copyFrom(values, 0, length);
-            _values.copyFrom(values, 0, length);
+            _prev_values = Bn3StaticVector<Type, MAX_ARRAY_SIZE>(values, length);
+            _values = _prev_values;
 
         }
 
         template<size_t array_size>
-        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, std::initializer_list<Type> values) : _name(name), _scope(scope)
+        AsyncPropertyArray(const Bn3Tag& name, const ScopedTaskScope& scope, std::initializer_list<Type> values) : _name(name), _scope(scope), _length(values.size())
         {
             static_assert(array_size >= MAX_ARRAY_SIZE);
-            assert(length <= MAX_ARRAY_SIZE);
+            assert(_length <= MAX_ARRAY_SIZE);
 
-            _length = values.size();
-
-            _prev_values.copyFrom(values);
-            _values.copyFrom(values);
+            _prev_values = Bn3StaticVector<Type, MAX_ARRAY_SIZE>(values);
+            _values = _prev_values;
 
         }
 
 
-        virtual bool isValid(const Type* values, size_t offset, size_t length)
+        virtual bool isValid(const Type* values, size_t start, size_t end)
         {
-            if (offset >= _length)
+            if (end <= start)
                 return false;
-            if (offset + length >= _length)
+            if (end > _length)
                 return false;
             return true;
         }        
 
 
-        bool get(Type* values, size_t offset, size_t length)
+        bool get(Type* values, size_t start, size_t end)
         {
-            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyObtained, this, values, offset, length);
+            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyObtained, this, values, start, end);
             auto ret = result.wait();
             if (!ret)
                 return false;
             return ret;
         }
 
-        Type get(size_t idx)
+        inline bool set(const Type* values, size_t start, size_t end)
         {
-            Type value = _values.data[idx];
-            bool ret = get(&value, idx, 1);
-            if (!ret)
-                return value;
-            return value;
-        }
-
-        bool set(const Type* values, size_t offset, size_t length)
-        {
-            if (!isValid(values, offset, length))
+            if (!isValid(values, start, end))
                 return false;
 
-            Array temp{_values};
-            temp.copyFrom(values, offset, length);
 
-            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyCommitted, this, temp);
+            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyCommitted, this, values, start, end);
             auto ret = result.wait();
             if (!ret)
                 return false;
@@ -117,14 +104,9 @@ namespace Bn3Monkey
             return true;
         }
 
-        inline bool set(const Type& value, size_t idx)
+        bool notify(size_t start, size_t end)
         {
-            return set(&value, idx, 1);
-        }
-
-        bool notify(size_t offset, size_t length)
-        {
-            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyNotified, this, offset, length);
+            auto result = _scope.call(_name, AsyncPropertyArray::onPropertyNotified, this, start, end);
             auto ret = result.wait();
             if (!ret)
                 return false;
@@ -133,35 +115,18 @@ namespace Bn3Monkey
             return true;
         }
 
-        inline bool notify(size_t idx)
+        void update(size_t start, size_t end, bool success)
         {
-            return notify(idx, 1);
+            _scope.run(_name, AsyncPropertyArray::onPropertyUpdated, this, start, end, success);
         }
 
-        void update(size_t offset, size_t length, bool success)
-        {
-            _scope.run(_name, AsyncPropertyArray::onPropertyUpdated, this, offset, length, success);
-        }
 
-        inline void update(size_t idx, bool success)
+        void setAsync(const Type* values, size_t start, size_t end)
         {
-            update(idx, 1, success);
-        }
-
-        void setAsync(const Type* values, size_t offset, size_t length)
-        {
-            if (!isValid(values, offset, length))
+            if (!isValid(values, start, end))
                 return;
 
-            Array temp{ _values };
-            temp.copyFrom(values, offset, length);
-
-            _scope.run(_name, AsyncPropertyArray::onPropertyProcessed, this, temp, offset, length);
-        }
-
-        inline void setAsync(const Type& value, size_t idx)
-        {
-            return setAsync(&value, idx, 1);
+            _scope.run(_name, AsyncPropertyArray::onPropertyProcessed, this, values, start, end);
         }
 
         void registerOnPropertyNotified(const ScopedTaskScope& scope, std::function<bool(const Type*, size_t, size_t)> onPropertyNotified)
@@ -186,56 +151,27 @@ namespace Bn3Monkey
 
     private:
 
-        struct Array
-        {
-            Type data[MAX_ARRAY_SIZE];
-            
-            Array()
-            {
-            }
-            Array(const Array& other)
-            {
-                std::copy(other.data, other.data + MAX_ARRAY_SIZE, data);
-            }
-            Array& operator=(const Array& other)
-            {
-                std::copy(other.data, other.data + MAX_ARRAY_SIZE, data);
-                return *this;
-            }
-            void copyFrom(std::initializer_list<Type> values)
-            {
-                std::copy(values.begin(), values.end(), data);
-            }
-            void copyFrom(const Type* values, size_t offset, size_t length)
-            {
-                std::copy(values, values + length, data + offset);
-            }
-            void copyTo(Type* values, size_t offset, size_t length)
-            {
-                std::copy(data + offset, data + offset + length, values);
-            }
+        
 
-        };
-
-        static bool onPropertyObtained(AsyncPropertyArray* self, Type* values, size_t offset, size_t length)
+        static bool onPropertyObtained(AsyncPropertyArray* self, Type* values, size_t start, size_t end)
         {
-            self->_values.copyTo(values, offset, length);
+            self->_values.copyTo(values, start, end);
             return true;
         }
-        static bool onPropertyCommitted(AsyncPropertyArray* self, Array values)
+        static bool onPropertyCommitted(AsyncPropertyArray* self, const Type* values, size_t start, size_t end)
         {
             self->_prev_values = self->_values;
-            self->_values = values;
+            self->_values.copyFrom(values, start, end);
             return true;
         }
-        static bool onPropertyNotified(AsyncPropertyArray* self, size_t offset, size_t length)
+        static bool onPropertyNotified(AsyncPropertyArray* self, size_t start, size_t end)
         {
             ScopedTaskResult<bool> results[8];
             size_t callback_length = 0;
 
             for (auto& on_property_notified : self->_on_property_notifieds)
             {
-                auto result = on_property_notified(Bn3Tag("Notified_", self->_name), self->_values.data + offset, offset, length);
+                auto result = on_property_notified(Bn3Tag("Notified_", self->_name), self->_values.begin() + start, start, end);
                 results[callback_length++] = std::move(result);
             }
 
@@ -265,18 +201,18 @@ namespace Bn3Monkey
             }
             return success;
         }
-        static void onPropertyUpdated(AsyncPropertyArray* self, size_t offset, size_t length, bool success)
+        static void onPropertyUpdated(AsyncPropertyArray* self, size_t start, size_t end, bool success)
         {
             for (auto& on_property_updated : self->_on_property_updateds)
             {
-                on_property_updated(Bn3Tag("Updated_", self->_name), self->_values.data + offset, offset, length, success);
+                on_property_updated(Bn3Tag("Updated_", self->_name), self->_values.begin() + start, start, end, success);
             }
         }
-        static bool onPropertyProcessed(AsyncPropertyArray* self, Array values, size_t offset, size_t length)
+        static bool onPropertyProcessed(AsyncPropertyArray* self, const Type* values, size_t start, size_t end)
         {
-            onPropertyCommitted(self, values);
-            bool ret = onPropertyNotified(self, offset, length);
-            onPropertyUpdated(self, offset, length, ret);
+            onPropertyCommitted(self, values, start, end);
+            bool ret = onPropertyNotified(self, start, end);
+            onPropertyUpdated(self, start, end, ret);
             return ret;
         }
 
@@ -288,8 +224,8 @@ namespace Bn3Monkey
 
         size_t _length;
 
-        Array _prev_values;
-        Array _values;
+        Bn3StaticVector<Type, MAX_ARRAY_SIZE> _prev_values;
+        Bn3StaticVector<Type, MAX_ARRAY_SIZE> _values;
     };
 }
 
