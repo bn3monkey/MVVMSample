@@ -130,7 +130,9 @@ namespace Bn3Monkey
 		size_t _length;
 
 		unsigned char _data[sizeof(Type) * MAX_SIZE];
+#if _DEBUG
 		Type (*_ptr)[MAX_SIZE] = std::launder(reinterpret_cast<Type(*)[MAX_SIZE]>(_data));
+#endif
 	};
 }
 

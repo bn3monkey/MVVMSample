@@ -29,6 +29,32 @@ void test_asyncpropertycontainer(bool value)
 
 	container.create(content);
 	
+	auto* version = container.find<int16_t>("parameter_format.version");
+	{
+		auto value = version->get();
+		say("version : %d", value);
+	}
+	auto* debug_rf = container.find<bool>("device.global.debug_rf");
+	{
+		auto value = debug_rf->get();
+		say("debug_rf : %s", value ? "true" : "false");
+	}
+	auto* sampling_frequency = container.find<int16_t>("device.global.sampling_frequency");
+	{
+		auto value = sampling_frequency->get();
+		say("sampling_frequency : %d", value);
+	}
+	auto* aperture = container.findArray<uint16_t, 16>("device.tx.open_aperture.aperture");
+	{
+		uint16_t values[16];
+		aperture->get(values, 0, 16);
+		for (size_t i = 0; i < aperture->length(); i++)
+		{
+			printf("%d ", values[i]);
+		}
+		printf("\n");
+	}
+
 	delete content;
 	return;
 }
@@ -712,12 +738,12 @@ void testAsyncProperty(bool value)
 	if (!value)
 		return;
 
-	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 32, 32, 32, 32, 32, 4});
+	Bn3Monkey::Bn3MemoryPool::initialize({ 64, 32, 128, 256, 32, 32, 32, 32, 4});
 	Bn3Monkey::ScopedTaskRunner().initialize();
 
-	test_asyncpropertycontainer(false);
+	test_asyncpropertycontainer(true);
 	test_asyncproperty(false);
-	test_asyncpropertyarray(true);
+	test_asyncpropertyarray(false);
 
 	Bn3Monkey::ScopedTaskRunner().release();
 	Bn3Monkey::Bn3MemoryPool::release();

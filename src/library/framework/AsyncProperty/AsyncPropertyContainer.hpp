@@ -17,9 +17,14 @@ namespace Bn3Monkey
 		{
 			const char* root_value = root._value;
 			size_t root_len = strlen(root_value);
+			char* ptr = _value + root_len;
 			std::copy(root_value, root_value + root_len, _value);
-			_value[root_len] = '.';
-			std::copy(value, value + strlen(value), _value + root_len + 1);
+			if (root_len != 0)
+			{
+				*ptr = '.';
+				ptr++;
+			}
+			std::copy(value, value + strlen(value), ptr);
 		}
 		PropertyPath(const PropertyPath& other)
 		{
@@ -67,7 +72,9 @@ namespace Bn3Monkey
 	class AsyncPropertyContainer
 	{
 	public:
-		AsyncPropertyContainer(const Bn3Tag& container_name, const ScopedTaskScope& scope) : _name(container_name) {}
+		AsyncPropertyContainer(const Bn3Tag& container_name, const ScopedTaskScope& scope) : _name(container_name), _scope(scope) {
+			_nodes = Bn3Map(PropertyPath, AsyncPropertyNode*) { Bn3MapAllocator(PropertyPath, AsyncPropertyNode*, container_name) };
+		}
 		virtual ~AsyncPropertyContainer() {
 			if (_container)
 				delete _container;
@@ -76,12 +83,30 @@ namespace Bn3Monkey
 		bool create(const char* content);
 
 		template<class Type>
-		AsyncProperty<Type>* find(const char* position) { return nullptr;  }
+		AsyncProperty<Type>* find(const char* path) { 
+			auto key = PropertyPath(path);
+			auto* value = _nodes.at(key);
+			auto* ret = reinterpret_cast<AsyncProperty<Type>*>(value);
+			return ret;
+		}
 
 		template<class Type, size_t MAX_ARRAY_SIZE>
-		AsyncPropertyArray<Type, MAX_ARRAY_SIZE>* findArray(const char* position) { return nullptr; }
+		AsyncPropertyArray<Type, MAX_ARRAY_SIZE>* findArray(const char* path)
+		{
+			auto key = PropertyPath(path);
+			auto* value = _nodes.at(key);
+			auto* ret = reinterpret_cast<AsyncPropertyArray<Type, MAX_ARRAY_SIZE>*>(value);
+			return ret;
+		}
+		void clear() { 
+			if (_container)
+			{
+				delete[] _container;
+				_container = nullptr;
+			}
+			_nodes.clear();
 
-		void clear() { return; }
+		}
 
 
 		//          -- onPropertyChanged-->
@@ -91,14 +116,14 @@ namespace Bn3Monkey
 		virtual void subscribe(AsyncPropertyContainer* other) {}
 
 	private:
-		void mapAsyncProperty(const PropertyPath& path, AsyncPropertyNode* node);
-		char* getAsyncProperty(char* ptr, const std::string& type, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content);
-		char* getAsyncPropertyArray(char* ptr, const std::string& type, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content);
-		char* assignProperties(const Bn3Monkey::PropertyPath& path, char* allocated_ptr, const nlohmann::json& content);
+		Bn3Monkey::AsyncPropertyExtendedNode getAsyncProperty(char* ptr, const std::string& type, const std::string& name, const nlohmann::json& value);
+		Bn3Monkey::AsyncPropertyExtendedNode getAsyncPropertyArray(char* ptr, const std::string& type, const std::string& name, size_t length, const nlohmann::json& values);
+		char* assignProperties(char* ptr, const Bn3Monkey::PropertyPath& path, const nlohmann::json& content);
 
 		Bn3Tag _name;
 
 		Bn3Map(PropertyPath, AsyncPropertyNode*) _nodes;
+		ScopedTaskScope _scope;
 		char* _container;
 	};
 }

@@ -19,14 +19,14 @@ namespace Bn3Monkey
 		explicit Bn3StaticString()
 		{
 		}
-		explicit Bn3StaticString(const char* str)
+		Bn3StaticString(const char* str)
 		{
 			_length = strlen(str);
 			std::copy(str, str + _length, _data);
 		}
 
 		template<typename String>
-		explicit Bn3StaticString(const String& str)
+		Bn3StaticString(const String& str)
 		{
 			static_assert(is_std_string<String>::value, "Input value must be string");
 			_length = str.length();

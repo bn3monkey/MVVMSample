@@ -79,6 +79,7 @@ namespace Bn3Monkey
             return true;
         }        
 
+        const size_t length() noexcept { return _length; }
 
         bool get(Type* values, size_t start, size_t end)
         {
@@ -219,8 +220,8 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
 
-        Bn3StaticVector<OnPropertyArrayNotified<Type>, 16> _on_property_notifieds;
-        Bn3StaticVector<OnPropertyArrayUpdated<Type>, 16> _on_property_updateds;
+        Bn3StaticVector<OnPropertyArrayNotified<Type>, 4> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyArrayUpdated<Type>, 4> _on_property_updateds;
 
         size_t _length;
 

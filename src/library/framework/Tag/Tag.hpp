@@ -17,14 +17,18 @@ namespace Bn3Monkey
 		explicit Bn3Tag(const char* value)
 		{
 			size_t length = strlen(value);
-			assert(length < TAG_SIZE - 1);
+			if (length >= TAG_SIZE - 1)
+				length = TAG_SIZE - 1;
 			std::copy(value, value + length, name);
 		}
 		explicit Bn3Tag(const Bn3Tag& prefix, const char* value)
 		{
 			size_t prefix_len = strlen(prefix.name);
 			size_t length = strlen(value);
-			assert(prefix_len + length < TAG_SIZE - 1);
+			if (prefix_len + length >= TAG_SIZE - 1)
+			{
+				length = TAG_SIZE - 1 - prefix_len;
+			}
 
 			std::copy(prefix.name, prefix.name + prefix_len, name);
 			std::copy(value, value+ length, name + prefix_len);
@@ -33,7 +37,10 @@ namespace Bn3Monkey
 		{
 			size_t postfix_len = strlen(postfix.name);
 			size_t length = strlen(value);
-			assert(postfix_len + length < TAG_SIZE - 1);
+			if (postfix_len + length < TAG_SIZE - 1)
+			{
+				length = TAG_SIZE - 1 - postfix_len;
+			}
 
 			std::copy(value, value + length, name);
 			std::copy(postfix.name, postfix.name + postfix_len, name + length);

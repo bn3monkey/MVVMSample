@@ -7,6 +7,12 @@ namespace Bn3Monkey
 	{
 
 	};
+
+	struct AsyncPropertyExtendedNode
+	{
+		AsyncPropertyNode* node{ nullptr };
+		size_t size{0};
+	};
 }
 
 #endif

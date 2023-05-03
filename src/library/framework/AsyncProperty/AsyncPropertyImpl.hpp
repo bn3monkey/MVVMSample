@@ -198,8 +198,8 @@ namespace Bn3Monkey
         Bn3Tag _name;
         ScopedTaskScope _scope;
        
-        Bn3StaticVector<OnPropertyNotified<value_type>, 16> _on_property_notifieds;
-        Bn3StaticVector<OnPropertyUpdated<value_type>, 16> _on_property_updateds;
+        Bn3StaticVector<OnPropertyNotified<value_type>, 4> _on_property_notifieds;
+        Bn3StaticVector<OnPropertyUpdated<value_type>, 4> _on_property_updateds;
 
         value_type _prev_value;
         value_type _value;
