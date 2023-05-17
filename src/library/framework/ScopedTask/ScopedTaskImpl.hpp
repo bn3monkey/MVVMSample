@@ -20,12 +20,12 @@
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
-#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)
 #endif
-#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, __VA_ARGS__)
-#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, ##__VA_ARGS__)
+#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)    
 #define LOG_V(text, ...) 
@@ -220,7 +220,28 @@ namespace Bn3Monkey
 
    
 
-    
+    template<class ReturnType>
+    inline void invokeScopedTaskImpl(const std::function<ReturnType()>& onTaskRunning, std::weak_ptr<ScopedTaskResultImpl<ReturnType>> wresult)
+    {
+        auto ret = onTaskRunning();
+        if (auto result = wresult.lock())
+            result->notify(ret);
+    }
+    template<>
+    inline void invokeScopedTaskImpl<void>(const std::function<void()>& onTaskRunning, std::weak_ptr<ScopedTaskResultImpl<void>> wresult)
+    {
+        onTaskRunning();
+        if (auto result = wresult.lock())
+            result->notify();
+    }
+
+    template<class ReturnType>
+    inline void cancelScopedTaskImpl(std::weak_ptr<ScopedTaskResultImpl<ReturnType>> wresult)
+    {
+        if (auto result = wresult.lock())
+            result->cancel();
+    }
+
     class ScopedTask
     {
     public:
@@ -321,43 +342,19 @@ namespace Bn3Monkey
             _invoke = [onTaskRunning = std::move(onTaskRunning), wresult = wresult](bool value) mutable
             {
                 if (value)
-                    invokeImpl(onTaskRunning, wresult);
+                    invokeScopedTaskImpl(onTaskRunning, wresult);
                 else
                 {
-                    cancelImpl(wresult);
+                    cancelScopedTaskImpl(wresult);
                 }
             };
             return result;
         }
 
-    private:
-        
-        template<class ReturnType>
-        static void invokeImpl(const std::function<ReturnType()>& onTaskRunning, std::weak_ptr<ScopedTaskResultImpl<ReturnType>> wresult)
-        {
-            auto ret = onTaskRunning();
-            if (auto result = wresult.lock())
-                result->notify(ret);
-        }
-        template<>
-        static void invokeImpl<void>(const std::function<void()>& onTaskRunning, std::weak_ptr<ScopedTaskResultImpl<void>> wresult)
-        {
-            onTaskRunning();
-            if (auto result = wresult.lock())
-                result->notify();
-        }
-
-        template<class ReturnType>
-        static void cancelImpl(std::weak_ptr<ScopedTaskResultImpl<ReturnType>> wresult)
-        {
-            if (auto result = wresult.lock())
-                result->cancel();
-        }
+    private:   
 
         Bn3Tag _name;
-                
         Bn3StaticVector<Bn3Tag, 8> _call_stack;
-
         std::function<void(bool)> _invoke;
     };
 

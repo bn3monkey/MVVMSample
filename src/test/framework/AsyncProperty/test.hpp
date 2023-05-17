@@ -742,8 +742,8 @@ void testAsyncProperty(bool value)
 	Bn3Monkey::ScopedTaskRunner().initialize();
 
 	test_asyncpropertycontainer(true);
-	test_asyncproperty(false);
-	test_asyncpropertyarray(false);
+	test_asyncproperty(true);
+	test_asyncpropertyarray(true);
 
 	Bn3Monkey::ScopedTaskRunner().release();
 	Bn3Monkey::Bn3MemoryPool::release();

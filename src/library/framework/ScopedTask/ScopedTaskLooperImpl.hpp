@@ -20,12 +20,12 @@
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
-#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)
 #endif
-#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, __VA_ARGS__)
-#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, ##__VA_ARGS__)
+#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)    
 #define LOG_V(text, ...) 
@@ -86,9 +86,9 @@ namespace Bn3Monkey
 		template<class Func, class... Args>
 		void start(std::chrono::microseconds interval, ScopedTaskScopeImpl& scope, Func func, Args... args)
 		{
-			if (!is_started)
+			if (!_is_started)
 			{
-				LOG_D("looper %s runs every %lld us", static_cast<long long int>(interval));
+				LOG_D("looper %s runs every %lld us", _name.str(), interval.count());
 				_is_started = true;
 				_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(interval);
 				_scope = &scope;

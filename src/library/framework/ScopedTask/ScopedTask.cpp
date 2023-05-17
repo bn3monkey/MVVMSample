@@ -6,9 +6,9 @@ std::shared_ptr<ScopedTaskScopeImplPool> scope_pool;
 std::shared_ptr<ScopedTaskLooperScheduler> looper_scheduler;
 
 #ifdef __BN3MONKEY_MEMORY_POOL__
-#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, __VA_ARGS__)
+#define MAKE_SHARED(TYPE, TAG, ...) Bn3Monkey::makeSharedFromMemoryPool<TYPE>(TAG, ##__VA_ARGS__)
 #else
-#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(__VA_ARGS__))
+#define MAKE_SHARED(TYPE, TAG, ...) std::shared_ptr<TYPE>(new TYPE(##__VA_ARGS__))
 #endif
 
 

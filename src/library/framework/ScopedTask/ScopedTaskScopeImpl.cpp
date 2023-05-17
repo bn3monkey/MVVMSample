@@ -1,5 +1,6 @@
 #include "ScopedTaskScopeImpl.hpp"
 #include "ScopedTaskHelper.hpp"
+#include "ScopedTaskScopeImpl.hpp"
 
 using namespace Bn3Monkey;
 

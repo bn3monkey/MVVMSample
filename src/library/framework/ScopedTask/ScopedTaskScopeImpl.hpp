@@ -12,6 +12,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <cassert>
+#include <thread>
 
 
 #ifdef BN3MONKEY_DEBUG
@@ -24,12 +25,12 @@
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
-#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)
 #endif
-#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, __VA_ARGS__)
-#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, ##__VA_ARGS__)
+#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)
 #define LOG_V(text, ...)

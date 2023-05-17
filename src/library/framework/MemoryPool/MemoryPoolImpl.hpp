@@ -7,6 +7,7 @@
 
 #include <string>
 #include <sstream>
+#include <cstdint>
 
 #include "../Tag/Tag.hpp"
 #include "../Log/Log.hpp"
@@ -19,23 +20,22 @@
 
 #ifdef __BN3MONKEY_LOG__
 #ifdef BN3MONKEY_DEBUG
-#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_D(text, ...) Bn3Monkey::Log::D(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)
 #endif
-#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, __VA_ARGS__)
-#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, __VA_ARGS__)
+#define LOG_V(text, ...) Bn3Monkey::Log::V(__FUNCTION__, text, ##__VA_ARGS__)
+#define LOG_E(text, ...) Bn3Monkey::Log::E(__FUNCTION__, text, ##__VA_ARGS__)
 #else
 #define LOG_D(text, ...)    
 #define LOG_V(text, ...) 
 #define LOG_E(text, ...)
 #endif
 
-
 namespace Bn3Monkey
 {
-    
-    constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 0};
+
+    constexpr size_t BLOCK_SIZE_POOL[] = { 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 0 };
     constexpr size_t BLOCK_SIZE_POOL_LENGTH = sizeof(BLOCK_SIZE_POOL) / sizeof(size_t) - 1;
     constexpr size_t MAX_BLOCK_SIZE = BLOCK_SIZE_POOL[BLOCK_SIZE_POOL_LENGTH - 1];
     constexpr size_t HEADER_SIZE = sizeof(unsigned int) + sizeof(int) + sizeof(void*) + sizeof(Bn3Tag);
@@ -49,7 +49,7 @@ namespace Bn3Monkey
             const unsigned int dirty = 0xFEDCBA98;
             Bn3Tag tag;
             int is_allocated{ false };
-            Bn3MemoryBlock<BlockSize>* freed_ptr{nullptr};
+            Bn3MemoryBlock<BlockSize>* freed_ptr{ nullptr };
         };
 
         static_assert(HEADER_SIZE == sizeof(Bn3MemoryHeader));
@@ -63,7 +63,7 @@ namespace Bn3Monkey
 
         static Bn3MemoryBlock<BlockSize>* getBlockReference(void* ptr)
         {
-            if ((void *)nullptr <= ptr && ptr < (void*)header_size)
+            if ((void*)nullptr <= ptr && ptr < (void*)header_size)
             {
                 LOG_E("reference is nullptr (%p)", ptr);
                 return nullptr;
@@ -82,13 +82,26 @@ namespace Bn3Monkey
         }
     };
 
+    template<size_t idx>
+    constexpr size_t findBlockPoolIndex(size_t object_size)
+    {
+        return object_size <= Bn3MemoryBlock< BLOCK_SIZE_POOL[idx]>::content_size ?
+            idx :
+            findBlockPoolIndex<idx + 1>(object_size);
+    }
+
+    template<>
+    constexpr size_t findBlockPoolIndex<BLOCK_SIZE_POOL_LENGTH>(size_t object_size)
+    {
+        return BLOCK_SIZE_POOL_LENGTH;
+    }
 
     class Bn3BlockHelper
-    {    
+    {
     public:
         Bn3BlockHelper(size_t object_size)
         {
-            _idx = Finder<0>::find(object_size);
+            _idx = findBlockPoolIndex<0>(object_size);
             _size = BLOCK_SIZE_POOL[_idx];
             _content_size = _size - HEADER_SIZE;
         }
@@ -98,27 +111,6 @@ namespace Bn3Monkey
         inline size_t content_size() { return _content_size; }
 
     private:
-        template<size_t idx>
-        class Finder
-        {
-        public:
-            constexpr static size_t find(size_t object_size) {
-                return object_size <= Bn3MemoryBlock< BLOCK_SIZE_POOL[idx]>::content_size ?
-                    idx :
-                    Finder<idx + 1>::find(object_size);
-            }
-
-        };
-
-        template<>
-        class Finder<BLOCK_SIZE_POOL_LENGTH>
-        {
-        public:
-            constexpr static size_t find(size_t object_size) {
-                return BLOCK_SIZE_POOL_LENGTH;
-            }
-        };
-
         size_t _idx;
         size_t _size;
         size_t _content_size;
@@ -134,7 +126,7 @@ namespace Bn3Monkey
 
         virtual void* allocate(const Bn3Tag& tag) = 0;
         virtual bool deallocate(void* ptr) = 0;
-    
+
     protected:
         size_t max_allocated{ 0 };
         size_t current_allocated{ 0 };
@@ -275,6 +267,49 @@ namespace Bn3Monkey
         Bn3MemoryBlock<block_size>* back;
     };
 
+    template<size_t idx>
+    constexpr size_t getStorageSize()
+    {
+        static_assert(1 < idx && idx <= BLOCK_SIZE_POOL_LENGTH);
+
+        return sizeof(Bn3MemoryBlockIndexedPool<idx - 1>) + getStorageSize<idx - 1>();
+    }
+
+    template<>
+    constexpr size_t getStorageSize<1>()
+    {
+        return sizeof(Bn3MemoryBlockIndexedPool<0>);
+    }
+
+    template<size_t pool_length, size_t idx>
+    class Bn3BlockPoolInitializer
+    {
+    public:
+        constexpr static void initialize(Bn3MemoryBlockPool* (&pool)[pool_length], char* storage, size_t offset)
+        {
+
+            using IndexedPool = Bn3MemoryBlockIndexedPool<idx>;
+            size_t pool_size = sizeof(IndexedPool);
+            auto* ptr = new (storage + offset - pool_size) IndexedPool();
+            pool[idx] = ptr;
+
+            Bn3BlockPoolInitializer<pool_length, idx - 1>::initialize(pool, storage, offset - pool_size);
+        }
+    };
+
+    template<size_t pool_length>
+    class Bn3BlockPoolInitializer<pool_length, 0>
+    {
+    public:
+        constexpr static void initialize(Bn3MemoryBlockPool* (&pool)[pool_length], char* storage, size_t offset)
+        {
+            using IndexedPool = Bn3MemoryBlockIndexedPool<0>;
+            size_t pool_size = sizeof(IndexedPool);
+            assert(offset - pool_size == 0);
+            auto* ptr = new (storage + offset - pool_size) IndexedPool();
+            pool[0] = ptr;
+        }
+    };
 
     template<size_t pool_length>
     class Bn3MemoryBlockPools
@@ -285,7 +320,7 @@ namespace Bn3Monkey
 
         Bn3MemoryBlockPools()
         {
-            initializePool<max_pool_num>(_pools, _pool_storage, sizeof(_pool_storage));
+            Bn3BlockPoolInitializer<pool_length, max_pool_num>::initialize(_pools, _pool_storage, sizeof(_pool_storage));
         }
 
         bool initialize(std::initializer_list<size_t> sizes)
@@ -354,7 +389,7 @@ namespace Bn3Monkey
             size_t idx = Bn3BlockHelper(allocated_size).idx();
             if (idx >= pool_length)
             {
-                auto* ptr =  new char[allocated_size];
+                auto* ptr = new char[allocated_size];
                 Type* ret = reinterpret_cast<Type*>(ptr);
                 return ret;
             }
@@ -378,14 +413,13 @@ namespace Bn3Monkey
             size_t idx = Bn3BlockHelper(allocated_size).idx();
             if (idx >= pool_length)
             {
-                delete[] (char *)reference;
+                delete[](char*)reference;
                 return true;
             }
 
             bool ret = _pools[idx]->deallocate(reference);
             return ret;
         }
-
 
 
         std::string analyzeAll()
@@ -397,46 +431,16 @@ namespace Bn3Monkey
             }
             return ss.str();
         }
-        
+
         std::string analyzePool(size_t idx)
         {
             return _pools[idx]->analyze();
         }
 
     private:
-                
-
-        template<size_t idx>
-        constexpr static size_t getStorageSize()
-        {
-            return sizeof(Bn3MemoryBlockIndexedPool<idx-1>) + getStorageSize<idx - 1>();
-        }
-        template<>
-        constexpr static size_t getStorageSize<1>()
-        {
-            return sizeof(Bn3MemoryBlockIndexedPool<0>);
-        }
-        template<size_t idx>
-        constexpr static void initializePool(Bn3MemoryBlockPool* (&pool)[pool_length], char* storage, size_t offset)
-        {
-            using IndexedPool = Bn3MemoryBlockIndexedPool<idx>;
-            size_t pool_size = sizeof(IndexedPool);
-            auto* ptr = new (storage + offset - pool_size) IndexedPool();
-            pool[idx] = ptr;
-
-            initializePool<idx - 1>(pool, storage, offset - pool_size);
-        }
-        template<>
-        constexpr static void initializePool<0>(Bn3MemoryBlockPool* (&pool)[pool_length], char* storage, size_t offset)
-        {
-            using IndexedPool = Bn3MemoryBlockIndexedPool<0>;
-            size_t pool_size = sizeof(IndexedPool);
-            assert(offset - pool_size == 0);
-            auto* ptr = new (storage + offset - pool_size) IndexedPool();
-            pool[0] = ptr;
-        }
 
         Bn3MemoryBlockPool* _pools[pool_length];
+        //char _pool_storage[8192];
         char _pool_storage[getStorageSize<pool_length>()];
     };
 }

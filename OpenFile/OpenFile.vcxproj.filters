@@ -24,6 +24,9 @@
     <ClCompile Include="ScopedTaskScopeImpl.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="Papyrus.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Log.hpp">
@@ -33,6 +36,15 @@
       <Filter>소스 파일</Filter>
     </ClInclude>
     <ClInclude Include="ScopedTaskScopeImpl.hpp">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="SANS.h">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="SANSCallback.h">
+      <Filter>소스 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Papyrus.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
   </ItemGroup>

@@ -15,7 +15,11 @@ inline void setThreadName(const char* name)
     wchar_t buffer[256] = { 0 };
     int size = MultiByteToWideChar(CP_UTF8, 0, name, -1, NULL, 0);
     MultiByteToWideChar(CP_UTF8, 0, name, -1, buffer, size);
+#ifndef __MINGW32__
     SetThreadDescription(GetCurrentThread(), buffer);
+#endif
+#else 
+    // Do Nothing
 #endif
 }
 

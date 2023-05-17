@@ -1,3 +1,4 @@
+#include "../test_helper.hpp"
 class BlockBase
 {
 public:

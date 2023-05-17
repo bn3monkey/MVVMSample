@@ -132,7 +132,7 @@ void Bn3Monkey::ScopedTaskLooperScheduler::remove(ScopedTaskLooperImpl& looper)
 {
 	{
 		std::unique_lock<std::mutex> lock(_mtx);
-		for (auto& iter = _activated_loopers.begin(); iter != _activated_loopers.end(); iter++)
+		for (auto iter = _activated_loopers.begin(); iter != _activated_loopers.end(); iter++)
 		{
 			if ((*iter)->_name == looper._name)
 			{

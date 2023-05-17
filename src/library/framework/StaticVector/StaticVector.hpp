@@ -76,7 +76,7 @@ namespace Bn3Monkey
 			return *std::launder(reinterpret_cast<Type*>(_data));
 		}
 		Type& back() {
-			return *std::launder(reinterpret_cast<Type*>(_data + sizeof(Type)*(idx-1)));
+			return *std::launder(reinterpret_cast<Type*>(_data + sizeof(Type)*(_length-1)));
 		}
 
 		Type& operator[](size_t idx) { 

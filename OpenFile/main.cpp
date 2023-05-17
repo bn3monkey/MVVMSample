@@ -1,3 +1,4 @@
+/*
 #include <cstdio>
 #include <algorithm>
 #include <type_traits>
@@ -104,7 +105,7 @@ private:
 };
 */
 
-
+/*
 namespace Bn3Monkey
 {
 	struct PropertyPath
@@ -177,7 +178,7 @@ int main()
 	using namespace std::chrono_literals;
 	std::this_thread::sleep_for(5s);
 	return 0;
-	*/
+	
 
 	
 
@@ -210,5 +211,99 @@ int main()
 		value = sans["egg"];
 		value = sans["apple.banana.death"];
 		printf("%d\n", *value);
+	}
+}
+*/
+
+
+#include "SANS.h"
+#include "SANSCallback.h"
+#include "Papyrus.h"
+
+#include <vector>
+#include <algorithm>
+#include <iterator>
+#include <cstdio>
+#include <functional>
+
+template<typename SrcType, typename DestType>
+class TypeConverter
+{
+public:
+	using NativeType = SrcType;
+	using InterfaceType = DestType;
+
+	using NativeTypeArray = std::vector<NativeType>;
+	using InterfaceTypeArray = std::vector<InterfaceType>;
+
+	using NativeTypeVector = std::vector<NativeType>;
+	using InterfaceTypeVector = std::vector<InterfaceType>;
+
+	virtual NativeType toNativeType(InterfaceType value) = 0;
+	virtual InterfaceType toInterfaceType(NativeType value) = 0;
+
+	static NativeTypeArray toNativeTypeArray(InterfaceTypeArray values)
+	{
+		NativeTypeArray ret;
+		std::transform(values.begin(), values.end(), std::back_inserter(ret), [&](InterfaceType value) {
+			return toNativeType(value);
+			});
+		return ret;
+	}
+
+	static InterfaceTypeArray toInterfaceTypeArray(NativeTypeArray values)
+	{
+		InterfaceTypeArray ret;
+		std::transform(values.begin(), values.end(), std::back_inserter(ret), [&](NativeType value) {
+			return toInterfaceType(value);
+			});
+		return ret;
+	}
+
+	static NativeTypeVector toNativeTypeVector(InterfaceTypeVector values)
+	{
+		NativeTypeVector ret;
+		std::transform(values.begin(), values.end(), std::back_inserter(ret), [&](InterfaceType value) {
+			return toNativeType(value);
+			});
+		return ret;
+	}
+
+	static InterfaceTypeVector toInterfaceTypeVector(NativeTypeVector values)
+	{
+		InterfaceTypeVector ret;
+		std::transform(values.begin(), values.end(), std::back_inserter(ret), EnumConverter<ENUM>::toInterfaceType);
+		return ret;
+	}
+};
+
+void main()
+{
+	TT::SANSCallback a;
+	registerCallback(a);
+	unregisterCallback();
+
+	enum class Monkey
+	{
+		¿ì³¢³¢ = 1,
+		ÁÂ³¢³¢,
+		»ó³¢³¢,
+		ÇÏ³¢³¢,
+		»óÇÏÁÂ¿ì·Î¿ïºÎÂ¢³¢
+	};
+
+	std::vector<int32_t> values{ 1, 2, 3, 4, 5 };
+	{
+		auto ret = EnumConverter<Monkey>::toNativeTypeArray(values);
+		for (auto& value : ret)
+		{
+			printf("%d\n", value);
+		}
+
+		auto ret2 = EnumConverter<Monkey>::toInterfaceTypeArray(ret);
+		for (auto& value : ret2)
+		{
+			printf("%d\n", value);
+		}
 	}
 }

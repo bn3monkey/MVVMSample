@@ -129,10 +129,14 @@
   <ItemGroup>
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="Papyrus.cpp" />
     <ClCompile Include="ScopedTaskScopeImpl.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Log.hpp" />
+    <ClInclude Include="Papyrus.h" />
+    <ClInclude Include="SANS.h" />
+    <ClInclude Include="SANSCallback.h" />
     <ClInclude Include="ScopedTask.hpp" />
     <ClInclude Include="ScopedTaskScopeImpl.hpp" />
   </ItemGroup>

@@ -6,10 +6,10 @@
 
 int main()
 {
-    testStaticString(false);
-    testStaticVector(false);
-    testMemoryPool(false);
-    testScopedTaskRunner(false);
+    testStaticString(true);
+    testStaticVector(true);
+    testMemoryPool(true);
+    testScopedTaskRunner(true);
     testAsyncProperty(true);
     
     return 0;
